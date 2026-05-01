@@ -1,0 +1,61 @@
+{
+  "_comment": "Companion herda guardrails Legion (S3 da spec dos fluxos). Hooks referenciados — projeto NÃO roda standalone até Marco 2c.X (legion project freeze) ser implementado.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/session_router.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/pre_tool_router.py\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/pre_write_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/post_tool_router.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/stop_router.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

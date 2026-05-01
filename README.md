@@ -1,3 +1,9 @@
+---
+title: "Companion"
+description: "Plataforma de desenvolvimento pessoal assistido por IA — MVP Conceitual em construção"
+purpose: "Primeira leitura sobre o repositório Companion (produto separado do Legion, Decisão A1)"
+---
+
 # Companion (web app)
 
 Plataforma de desenvolvimento pessoal assistido por IA. MVP Conceitual em construção.
