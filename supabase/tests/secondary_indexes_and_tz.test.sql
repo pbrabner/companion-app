@@ -39,10 +39,10 @@ SELECT has_index(
 );
 
 -- Expressão do índice usa America/Sao_Paulo (Decisão D-12)
-SELECT like(
+SELECT matches(
   (SELECT indexdef FROM pg_indexes
      WHERE schemaname = 'public' AND indexname = 'checkins_one_per_day'),
-  '%America/Sao_Paulo%',
+  'America/Sao_Paulo',
   'checkins_one_per_day uses America/Sao_Paulo timezone (Decisão D-12)'
 );
 
