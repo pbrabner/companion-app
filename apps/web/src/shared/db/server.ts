@@ -2,12 +2,16 @@
  * Server-side Supabase client factory for the Companion web app.
  * Returns a fresh client per call so that each Server Action / Route
  * Handler sees the current request's cookies and acts under the
- * authenticated user's RLS context.
+ * authenticated user's RLS context. Typed against the generated
+ * Database schema so `client.from('profiles').select('*')` infers
+ * `Profile[]` at compile time (T-005 acceptance clause a).
  * @module shared/db/server
  */
 
 import { createServerClient as createSsrServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+
+import type { Database } from './types';
 
 function readEnv(name: string): string {
   const value = process.env[name];
@@ -22,7 +26,7 @@ export async function createServerClient() {
   const anonKey = readEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   const cookieStore = await cookies();
 
-  return createSsrServerClient(url, anonKey, {
+  return createSsrServerClient<Database>(url, anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

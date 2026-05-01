@@ -9,6 +9,28 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import type { Database } from '@/shared/db/types';
+
+// Compile-time assertion of acceptance clause (a):
+//   `await client.from('profiles').select('*')` → typed `Profile[]`.
+// We cannot exercise the real generic instance through the runtime mock,
+// so we assert the schema-derived row type matches the expected shape via
+// a structural type test. If `types.ts` regresses (e.g., column dropped),
+// `pnpm typecheck` fails here.
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type _AssertProfileShape = ProfileRow extends {
+  id: string;
+  display_name: string | null;
+  active_track: string | null;
+  privacy_accepted_at: string | null;
+  onboarded_at: string | null;
+  created_at: string;
+}
+  ? true
+  : never;
+const _profileShapeOk: _AssertProfileShape = true;
+void _profileShapeOk;
+
 vi.mock('@supabase/ssr', () => ({
   createServerClient: vi.fn(() => ({
     from: vi.fn(() => ({
