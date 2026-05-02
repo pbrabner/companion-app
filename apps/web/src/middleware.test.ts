@@ -48,7 +48,11 @@ function makeRequest(pathname: string): NextRequest {
 }
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  // We use clearAllMocks (not resetAllMocks) so the @supabase/ssr factory
+  // implementation declared via vi.mock above is preserved between tests;
+  // only call history is cleared. Per-test behavior is varied through the
+  // closed-over `getUserResult` / `profileResult` handles.
+  vi.clearAllMocks();
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
   getUserResult = { data: { user: null }, error: null };
