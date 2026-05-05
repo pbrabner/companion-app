@@ -119,12 +119,13 @@ SELECT is(
   4,
   'checkins has 4 owner_* policies'
 );
+-- Updated by T-008: journal_entries policies changed (owner_update → service_role_update)
 SELECT is(
   (SELECT count(*)::int FROM pg_policies
      WHERE schemaname = 'public' AND tablename = 'journal_entries'
-       AND policyname IN ('owner_select','owner_insert','owner_update','owner_delete')),
+       AND policyname IN ('owner_select','owner_insert','owner_delete','service_role_update')),
   4,
-  'journal_entries has 4 owner_* policies'
+  'journal_entries has 4 policies (3 owner_* + service_role_update)'
 );
 SELECT is(
   (SELECT count(*)::int FROM pg_policies

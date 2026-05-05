@@ -19,9 +19,10 @@ SELECT has_index(
   'public', 'messages', 'idx_messages_conversation_id',
   'idx_messages_conversation_id exists on messages.conversation_id'
 );
+-- Updated by T-008: idx_journal_entries_user_id replaced by composite index
 SELECT has_index(
-  'public', 'journal_entries', 'idx_journal_entries_user_id',
-  'idx_journal_entries_user_id exists on journal_entries.user_id'
+  'public', 'journal_entries', 'idx_journal_entries_user_id_created_at_desc',
+  'idx_journal_entries_user_id_created_at_desc exists on journal_entries(user_id, created_at DESC)'
 );
 SELECT has_index(
   'public', 'conversations', 'idx_conversations_user_id',
