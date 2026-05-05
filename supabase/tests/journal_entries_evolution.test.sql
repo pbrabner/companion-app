@@ -139,6 +139,8 @@ SELECT results_eq(
 
 -- ---------------------------------------------------------------------------
 -- 7. Behavioral — owner DELETE OK + cross-user DELETE bloqueado (CA-T008-6)
+--    Nota: este bloco DELETA a row 111a (entry de A) — assertions anteriores
+--    no §6 dependem da row existir. Se reordenar, a CA-T008-4 corollary quebra.
 -- ---------------------------------------------------------------------------
 -- Cross-user DELETE: user A tenta apagar reflexão de B → 0 rows
 SELECT results_eq(
@@ -166,11 +168,16 @@ SELECT results_eq(
 
 -- ---------------------------------------------------------------------------
 -- 8. Behavioral — service_role UPDATE em processed_at OK (CA-T008-5)
---    Reset role pra postgres (que tem BYPASSRLS) — proxy pra service_role
---    no contexto de teste local. Em prod seria service_role real.
+--    SET LOCAL ROLE service_role — testa a policy service_role_update
+--    explicitamente (sem BYPASSRLS). service_role é role real no Supabase local
+--    (criado pela imagem do supabase-postgres).
+--    Sem este teste rodar AS service_role, a CA-T008-5 estaria falsamente
+--    coberta — superuser passaria mesmo se a policy tivesse typo ou fosse
+--    accidentalmente dropada. Final review T-008 ★Important fix.
 -- ---------------------------------------------------------------------------
 RESET ROLE;
 RESET "request.jwt.claim.sub";
+SET LOCAL ROLE service_role;
 
 SELECT results_eq(
   $$WITH u AS (
@@ -181,7 +188,7 @@ SELECT results_eq(
     )
     SELECT count(*)::int FROM u$$,
   $$VALUES (1)$$,
-  'CA-T008-5: superuser/service_role UPDATE on processed_at affects 1 row'
+  'CA-T008-5: service_role UPDATE on processed_at affects 1 row (testa policy service_role_update)'
 );
 
 SELECT results_eq(

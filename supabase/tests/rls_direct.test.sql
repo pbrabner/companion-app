@@ -228,6 +228,9 @@ SELECT lives_ok(
 -- verify B's rows are intact (display_name, body, mood) and B's rows still exist.
 UPDATE public.profiles SET display_name = 'hacked'
   WHERE id = '00000000-0000-0000-0000-00000000000b'::uuid;
+-- Updated by T-008: post-T-008 (DROP POLICY owner_update), este UPDATE retorna 0 rows
+-- pra cross-user E pra própria row do user A — body é imutável append-only.
+-- Asserts subsequentes ainda válidas (B's body intacto, A's body unchanged).
 UPDATE public.journal_entries SET body = 'hacked'
   WHERE user_id = '00000000-0000-0000-0000-00000000000b'::uuid;
 UPDATE public.checkins SET mood = 1

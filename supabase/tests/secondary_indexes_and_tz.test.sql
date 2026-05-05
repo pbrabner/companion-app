@@ -4,6 +4,9 @@
 --          using 'America/Sao_Paulo' timezone instead of UTC (Achado 🟠-1,
 --          Decisão D-12), and (b) adds 4 secondary indexes on FK columns
 --          that lacked them (Achado 🟠-2). Naming convention: idx_<table>_<column>.
+--          Updated by T-008 (2026-05-04): idx_journal_entries_user_id substituído
+--          pelo composto idx_journal_entries_user_id_created_at_desc — ver migration
+--          0006_journal_entries_evolution.sql + spec docs/specs/2026-05-04-T-008-*.
 --
 -- Source achados:
 --   * 🟠-1: reviews/2026-04-30-fundacao-tecnica.md (Code Reviewer parcial 2026-04-30)
