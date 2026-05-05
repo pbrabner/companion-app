@@ -1,0 +1,20 @@
+-- migration: journal_entries_evolution (test)
+-- purpose: pgTAP assertions para T-008 — schema + RLS + index pós-evolução
+--          de journal_entries. Cobre CAs 1-8 da spec v0.2.
+-- spec: docs/specs/2026-05-04-T-008-reflections-schema.md
+-- plan: docs/plans/2026-05-04-T-008-reflections-schema.md
+--
+-- Acceptance criteria validated (binary):
+--   CA-T008-1: schema + RLS + index post-migration shape
+--   CA-T008-2 ★ALTO: cross-user SELECT bloqueado
+--   CA-T008-3: cross-user INSERT bloqueado
+--   CA-T008-4: owner UPDATE no body bloqueado (append-only)
+--   CA-T008-5: service_role UPDATE em processed_at permitido
+--   CA-T008-6: owner DELETE permitido + cross-user DELETE bloqueado
+--   CA-T008-7: index composto present + single-column antigo absent
+--   CA-T008-8: policies_are exato pós-evolução
+--
+-- Technique: same as rls_direct.test.sql (BEGIN/ROLLBACK + 2 mock users +
+-- SET LOCAL request.jwt.claim.sub + SET LOCAL ROLE 'authenticated').
+
+-- (assertions adicionados em RED phase)

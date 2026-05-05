@@ -1,0 +1,15 @@
+-- migration: 0006_journal_entries_evolution
+-- purpose: T-008 — evolução de public.journal_entries pra atender PRD
+--          captura-reflexao-diaria (Marco 1 MVP).
+-- spec: docs/specs/2026-05-04-T-008-reflections-schema.md (v0.2)
+-- plan: docs/plans/2026-05-04-T-008-reflections-schema.md
+--
+-- Changes (preenchido na GREEN phase):
+--   1. ADD COLUMN processed_at timestamptz NULL
+--   2. DROP POLICY owner_update + CREATE POLICY service_role_update
+--   3. DROP INDEX idx_journal_entries_user_id + CREATE composto (user_id, created_at DESC)
+--
+-- RLS post-migration (4 policies): owner_select, owner_insert, owner_delete, service_role_update.
+-- owner_update intencionalmente removida — body imutável (D-T008-2 da spec).
+
+-- (statements adicionados em GREEN phase)
