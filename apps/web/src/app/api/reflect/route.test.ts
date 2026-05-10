@@ -292,7 +292,7 @@ describe('POST /api/reflect — Claude failure post-INSERT', () => {
     expect(response.status).toBe(200);
     const body = await readStream(response);
     const lines = body.split('\n').filter((l) => l.length > 0);
-    expect(lines.length).toBeGreaterThanOrEqual(2);
+    expect(lines.length).toBe(2); // M-003: exactly metadata + error, no intermediate chunks when chatStream throws on 1st iter
 
     const first = JSON.parse(lines[0] ?? '') as { reflection_id: string };
     expect(first.reflection_id).toBe('33333333-3333-4333-8333-333333333333');

@@ -7,11 +7,11 @@ purpose: "Primeiro código user-facing do pipeline da feature core 'Captura de R
 # Spec — T-009: Route Handler `POST /api/reflect` (submit + persist + stream Sonnet)
 
 > **Marco:** 1 (MVP) — feature core "Captura de Reflexão Diária"
-> **Status:** ⬜ planejada
+> **Status:** ✅ concluída
 > **Owner:** pacini
 > **Criada em:** 2026-05-04
 > **Versão:** 0.1
-> **Concluída em:** —
+> **Concluída em:** 2026-05-10 (commit `6599c13` em `main`, com follow-up M-001..M-005 aplicado)
 > **Pré-requisitos:** T-005 ✅ (Supabase clients tipados); T-006 ✅ (`chatStream` Sonnet 4.6); T-007 ✅ (middleware Supabase auth); T-008 ✅ (`journal_entries` evoluído pra append-only + processed_at)
 > **Paralelizável com:** T-010 (job async) — não, T-010 lê rows criadas aqui; T-011 (UI) — sim, depende só do contrato HTTP estável
 

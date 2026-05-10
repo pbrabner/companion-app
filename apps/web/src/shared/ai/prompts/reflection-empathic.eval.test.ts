@@ -17,8 +17,8 @@ const FORBIDDEN_DIAGNOSTIC = [
   'você tem depressão',
   'você tem TDAH',
   'você sofre de',
-  'transtorno de',
-  'diagnóstico',
+  'transtorno', // M-001: matches "transtorno bipolar", "transtorno de ansiedade", etc.
+  'seu diagnóstico',
 ];
 
 const FORBIDDEN_PRESCRIPTIVE = [
@@ -34,6 +34,7 @@ const FORBIDDEN_JUDGMENT = [
   'você está certo',
   'narcisista',
   'tóxico',
+  'dependente emocional', // M-002: directive 4 — never label person
 ];
 
 async function aggregate(content: string): Promise<string> {

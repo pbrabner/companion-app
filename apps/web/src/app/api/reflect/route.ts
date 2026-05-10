@@ -64,7 +64,9 @@ export async function POST(request: Request): Promise<Response> {
   }
   const userId = userData.user.id;
 
-  // 5. INSERT into journal_entries (RLS auto-applied via auth.uid())
+  // 5. INSERT into journal_entries (RLS auto-applied via auth.uid()).
+  // prompt_used is null in T-009: free-form reflection, no suggested prompt.
+  // RF-009 (prompt suggestion) is Marco 2 — column will be populated then.
   const { data: insertData, error: insertError } = await supabase
     .from('journal_entries')
     .insert({ user_id: userId, body: trimmed, prompt_used: null })
