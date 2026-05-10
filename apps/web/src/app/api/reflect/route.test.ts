@@ -206,7 +206,7 @@ describe('POST /api/reflect — happy path', () => {
 
     const stream = await readStream(response);
     const lines = stream.split('\n');
-    const firstLine = lines[0];
+    const firstLine = lines[0] ?? '';
     const meta = JSON.parse(firstLine) as { reflection_id: string };
     expect(meta.reflection_id).toBe('11111111-1111-4111-8111-111111111111');
     // Remaining lines (joined) contain the Claude chunks
@@ -294,10 +294,10 @@ describe('POST /api/reflect — Claude failure post-INSERT', () => {
     const lines = body.split('\n').filter((l) => l.length > 0);
     expect(lines.length).toBeGreaterThanOrEqual(2);
 
-    const first = JSON.parse(lines[0]) as { reflection_id: string };
+    const first = JSON.parse(lines[0] ?? '') as { reflection_id: string };
     expect(first.reflection_id).toBe('33333333-3333-4333-8333-333333333333');
 
-    const last = JSON.parse(lines[lines.length - 1]) as {
+    const last = JSON.parse(lines[lines.length - 1] ?? '') as {
       error: string;
       reflection_id: string;
     };
@@ -378,7 +378,8 @@ describe('POST /api/reflect — Sonnet invocation shape', () => {
     await readStream(r);
 
     expect(chatStreamMock).toHaveBeenCalledTimes(1);
-    const args = chatStreamMock.mock.calls[0][0] as {
+    const firstCall = chatStreamMock.mock.calls[0] ?? [];
+    const args = firstCall[0] as {
       system: string;
       messages: Array<{ role: string; content: string }>;
     };
