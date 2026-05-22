@@ -1,0 +1,52 @@
+# Template a11y workflow — copia pra .github/workflows/ no projeto-destino.
+# Roda Pa11y CLI em URLs configuráveis, falha CI se WCAG AA contrast/keyboard violado.
+#
+# Deps no projeto-destino: package.json com script "build" + "start" funcionais.
+# Configure URLS abaixo conforme rotas do produto.
+#
+# PRD: docs/plans/2026-05-19-bundle-4-ui-ux-wave2.md (Legion design system).
+
+name: A11y check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  pa11y:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start app in background
+        run: npm start &
+        env:
+          PORT: 3000
+
+      - name: Wait for app
+        run: npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Install Pa11y
+        run: npm install -g pa11y@latest
+
+      - name: Run Pa11y on key pages
+        run: |
+          pa11y http://localhost:3000 --standard WCAG2AA --threshold 0
+          # Adicione mais rotas conforme produto:
+          # pa11y http://localhost:3000/dashboard --standard WCAG2AA --threshold 0
+          # pa11y http://localhost:3000/settings --standard WCAG2AA --threshold 0

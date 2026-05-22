@@ -1,0 +1,70 @@
+/* Theme: forest — palette verde pra produtos com identidade orgânica/sustentável.
+ *
+ * Uso:
+ *   import "./design-system/themes/forest.css";
+ *   <html data-theme="forest">
+ *
+ * Diff vs default: --primary, --ring shift pra hue 140 (verde) + accent earth.
+ */
+
+@layer base {
+  [data-theme="forest"] {
+    --background: 100 20% 98%;
+    --foreground: 140 40% 8%;
+
+    --card: 100 20% 98%;
+    --card-foreground: 140 40% 8%;
+
+    --popover: 100 20% 98%;
+    --popover-foreground: 140 40% 8%;
+
+    --primary: 140 70% 35%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 100 15% 92%;
+    --secondary-foreground: 140 40% 12%;
+
+    --muted: 100 15% 92%;
+    --muted-foreground: 100 20% 40%;
+
+    --accent: 40 60% 88%;
+    --accent-foreground: 30 60% 14%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 100 15% 88%;
+    --input: 100 15% 88%;
+    --ring: 140 70% 35%;
+  }
+
+  [data-theme="forest"].dark {
+    --background: 140 35% 6%;
+    --foreground: 100 20% 96%;
+
+    --card: 140 35% 6%;
+    --card-foreground: 100 20% 96%;
+
+    --popover: 140 35% 6%;
+    --popover-foreground: 100 20% 96%;
+
+    --primary: 140 70% 48%;
+    --primary-foreground: 140 40% 8%;
+
+    --secondary: 140 20% 18%;
+    --secondary-foreground: 100 20% 96%;
+
+    --muted: 140 20% 18%;
+    --muted-foreground: 100 15% 64%;
+
+    --accent: 40 30% 20%;
+    --accent-foreground: 40 50% 92%;
+
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 140 20% 18%;
+    --input: 140 20% 18%;
+    --ring: 140 70% 48%;
+  }
+}

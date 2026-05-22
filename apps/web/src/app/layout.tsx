@@ -6,6 +6,8 @@
 
 import type { ReactNode } from 'react';
 
+import '../design-system/globals.css';
+
 export const metadata = {
   title: 'Companion',
   description: 'Companion — desenvolva seu próprio humano',

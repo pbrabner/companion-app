@@ -1,0 +1,70 @@
+/* Theme: ocean — palette azul/teal pra produtos com identidade marítima.
+ *
+ * Uso:
+ *   import "./design-system/themes/ocean.css";
+ *   <html data-theme="ocean">
+ *
+ * Diff vs default: --primary, --ring, --accent shift pra hue 200 (azul) + variant teal.
+ */
+
+@layer base {
+  [data-theme="ocean"] {
+    --background: 200 30% 98%;
+    --foreground: 200 50% 8%;
+
+    --card: 200 30% 98%;
+    --card-foreground: 200 50% 8%;
+
+    --popover: 200 30% 98%;
+    --popover-foreground: 200 50% 8%;
+
+    --primary: 200 90% 40%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 200 20% 92%;
+    --secondary-foreground: 200 50% 12%;
+
+    --muted: 200 20% 92%;
+    --muted-foreground: 200 30% 40%;
+
+    --accent: 180 70% 90%;
+    --accent-foreground: 180 80% 12%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 200 30% 88%;
+    --input: 200 30% 88%;
+    --ring: 200 90% 40%;
+  }
+
+  [data-theme="ocean"].dark {
+    --background: 200 40% 6%;
+    --foreground: 200 20% 96%;
+
+    --card: 200 40% 6%;
+    --card-foreground: 200 20% 96%;
+
+    --popover: 200 40% 6%;
+    --popover-foreground: 200 20% 96%;
+
+    --primary: 200 90% 55%;
+    --primary-foreground: 200 50% 8%;
+
+    --secondary: 200 25% 18%;
+    --secondary-foreground: 200 20% 96%;
+
+    --muted: 200 25% 18%;
+    --muted-foreground: 200 15% 64%;
+
+    --accent: 180 60% 18%;
+    --accent-foreground: 180 30% 92%;
+
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 200 25% 18%;
+    --input: 200 25% 18%;
+    --ring: 200 90% 55%;
+  }
+}
