@@ -1,0 +1,39 @@
+name: Visual regression
+
+on:
+  push:
+    branches: [main, staging, "b4-*"]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  lost-pixel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web/src/design-system
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/src/design-system/pnpm-lock.yaml
+
+      - name: Install design-system deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build Storybook
+        run: pnpm build-storybook
+
+      - name: Lost Pixel
+        run: pnpm lost-pixel:test
