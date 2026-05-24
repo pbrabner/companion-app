@@ -247,12 +247,54 @@ Vendoring: **edite diretamente**. Não há sincronização automática com upstr
 Quando mudar variants/tokens, **documente no `DESIGN.md` do projeto** pra futuras
 referências.
 
+## Visual regression (Lost Pixel)
+
+Storybook + [Lost Pixel](https://github.com/lost-pixel/lost-pixel) guardam screenshots de cada story em `.lostpixel/baseline/` (commitados). CI compara cada PR vs baselines, falha se diff > 0.5%.
+
+### Workflow
+
+- **Push** em `main`/`staging`/`b4-*` ou **PR** para `main`/`staging` → triggera `.github/workflows/visual-regression.yml`
+- CI builda Storybook + roda `pnpm lost-pixel:test`
+- Diff > 0.5% (threshold) → CI falha + diff salvo em `.lostpixel/difference/` (download via run artifact)
+
+### Atualizar baselines (quando mudança visual é intencional)
+
+**Opção A — Local (apenas se você está em Linux/macOS com mesma versão fonts do CI):**
+
+```bash
+cd apps/web/src/design-system
+pnpm build-storybook
+pnpm lost-pixel:update
+git add .lostpixel/baseline/
+git commit -m "feat(design-system): update baselines (motivo)"
+```
+
+**Opção B — Via CI (recomendado, evita drift cross-env):**
+
+1. No GitHub Actions UI, run workflow `Visual regression` manualmente com input `mode = update` (ou via CLI: `gh workflow run visual-regression.yml -f mode=update --ref <branch>`)
+2. Aguarde conclusão → download artifact `lost-pixel-baselines-ci-generated`
+3. Substitua local: `rm -rf .lostpixel/baseline/ && cp <download>/* .lostpixel/baseline/`
+4. Commit + push
+
+### Threshold
+
+`lostpixel.config.js`: `threshold: 0.005` (0.5%). Acomoda variância de font-rendering entre runs Ubuntu (~0.26% observada empírica). Mudanças visuais reais geram diffs muito maiores (Button alterado teve 5.5%).
+
+### Setup técnico
+
+- Storybook 8.6 + Vite + React 19 (devDeps em `package.json`)
+- Lost Pixel 3.22 + Playwright Chromium 1.60 (lost-pixel binding é via Playwright)
+- 36 baselines cobrindo 11 componentes × variantes
+- Geradas no ambiente CI Ubuntu (anti drift cross-env vs local Windows)
+
+PRD: `docs/plans/2026-05-24-lost-pixel-visual-regression-design.md` (no repo Companion)
+
 ## Wave 2 planejada
 
 - 5+ componentes adicionais (Select, Checkbox, Switch, Tabs, Tooltip)
 - Dark mode provider canônico
-- Storybook setup
-- Visual regression (Chromatic ou similar)
+- ~~Storybook setup~~ ✓ feito 2026-05-24
+- ~~Visual regression (Chromatic ou similar)~~ ✓ Lost Pixel ativo 2026-05-24
 - A11y testing (axe-core CI)
 
 ## Origem
