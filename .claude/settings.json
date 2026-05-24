@@ -32,6 +32,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Legion - New Horizon/legion/scripts/hooks/workflow_verify_gate.py\"",
+            "timeout": 2
+          }
+        ]
       }
     ],
     "PostToolUse": [
