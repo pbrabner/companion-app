@@ -5,6 +5,16 @@ on:
     branches: [main, staging, "b4-*"]
   pull_request:
     branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'test (compare baselines) or update (regenerate)'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - update
 
 jobs:
   lost-pixel:
@@ -35,5 +45,18 @@ jobs:
       - name: Build Storybook
         run: pnpm build-storybook
 
-      - name: Lost Pixel
+      - name: Lost Pixel (test mode)
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'test'
         run: pnpm lost-pixel:test
+
+      - name: Lost Pixel (update baselines)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update'
+        run: pnpm lost-pixel:update
+
+      - name: Upload baselines artifact (update mode)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lost-pixel-baselines-ci-generated
+          path: apps/web/src/design-system/.lostpixel/baseline/
+          retention-days: 7
