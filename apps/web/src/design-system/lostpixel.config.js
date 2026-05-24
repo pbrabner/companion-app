@@ -8,4 +8,5 @@ export const config = {
   threshold: 0.001,
   generateOnly: false,
   waitBeforeScreenshot: 500,
+  failOnDifference: true,
 };

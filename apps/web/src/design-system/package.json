@@ -42,7 +42,7 @@
   "scripts": {
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "lost-pixel:test": "lost-pixel",
+    "lost-pixel:test": "lost-pixel && node -e \"const{readdirSync,existsSync}=require('fs');const d='.lostpixel/difference';if(existsSync(d)&&readdirSync(d).some(f=>f.endsWith('.png'))){console.error('Lost Pixel: '+readdirSync(d).filter(f=>f.endsWith('.png')).length+' difference image(s) found — failing CI');process.exit(1)}\"",
     "lost-pixel:update": "lost-pixel update"
   }
 }
