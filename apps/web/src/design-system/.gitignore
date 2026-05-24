@@ -1,0 +1,4 @@
+storybook-static/
+.lostpixel/current/
+.lostpixel/difference/
+node_modules/

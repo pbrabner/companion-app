@@ -2,6 +2,7 @@
 //
 // Importa globals.css pra aplicar tokens HSL nos stories. Decorator alterna
 // .dark class na div root pra cobertura visual de ambos os temas.
+import React from "react";
 import type { Preview } from "@storybook/react";
 import "../globals.css";
 
