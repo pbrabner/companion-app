@@ -1,0 +1,62 @@
+name: Visual regression
+
+on:
+  push:
+    branches: [main, staging, "b4-*"]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'test (compare baselines) or update (regenerate)'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - update
+
+jobs:
+  lost-pixel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web/src/design-system
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/src/design-system/pnpm-lock.yaml
+
+      - name: Install design-system deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build Storybook
+        run: pnpm build-storybook
+
+      - name: Lost Pixel (test mode)
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'test'
+        run: pnpm lost-pixel:test
+
+      - name: Lost Pixel (update baselines)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update'
+        run: pnpm lost-pixel:update
+
+      - name: Upload baselines artifact (update mode)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lost-pixel-baselines-ci-generated
+          path: apps/web/src/design-system/.lostpixel/baseline/
+          retention-days: 7
