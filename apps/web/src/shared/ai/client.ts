@@ -1,19 +1,30 @@
 /**
- * Anthropic SDK client + helpers used by the Companion app.
- * Exposes a singleton Anthropic instance plus two helpers:
- *   - chatStream: Sonnet 4.6 streaming chat as an async iterator of text chunks.
- *   - classifyHaiku: Haiku 4.5 single-shot classifier returning a parsed JSON
- *     object. The Anthropic SDK has no native structured-output mode, so we
- *     instruct the model via system prompt to reply with raw JSON only and
- *     then JSON.parse the first text block.
+ * Multi-provider AI client used by the Companion app.
+ *
+ * chatStream tenta Claude (Sonnet 4.6) primeiro e cai pra Gemini
+ * (2.5 Flash) se o provider primário falhar ANTES de emitir qualquer
+ * chunk. Falha mid-stream (após emitir) propaga — não dá pra trocar de
+ * provider no meio sem duplicar texto pro cliente.
+ *
+ * Ordem resolvida por env:
+ *   - ANTHROPIC_API_KEY presente → Claude disponível
+ *   - GEMINI_API_KEY presente → Gemini disponível
+ *   - AI_PROVIDER=gemini inverte a ordem (Gemini primário, Claude fallback)
+ *   - Default: [claude, gemini] (Claude primário)
+ *
+ * classifyHaiku permanece Anthropic-only (T-010 futuro).
  * @module shared/ai/client
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
 /** Verified model IDs for the Companion project. */
 export const SONNET_MODEL = 'claude-sonnet-4-6';
 export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+export const GEMINI_MODEL = 'gemini-2.5-flash';
+
+export type AiProvider = 'claude' | 'gemini';
 
 /** Chat message role accepted by the helpers. */
 export type ChatRole = 'user' | 'assistant';
@@ -61,11 +72,27 @@ function createClient(): Anthropic {
 }
 
 /**
- * Stream a chat completion with Sonnet 4.6 and yield text chunks as they
- * arrive. Consumes the SDK stream and re-emits only the `text_delta` payloads
- * from `content_block_delta` events as plain strings.
+ * Resolve a ordem de providers a tentar, baseado nas keys presentes e no
+ * override AI_PROVIDER. Só inclui providers com key configurada.
  */
-export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
+export function resolveProviderOrder(): AiProvider[] {
+  const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+  const override = process.env.AI_PROVIDER;
+
+  const available: AiProvider[] = [];
+  if (override === 'gemini') {
+    if (hasGemini) available.push('gemini');
+    if (hasClaude) available.push('claude');
+  } else {
+    if (hasClaude) available.push('claude');
+    if (hasGemini) available.push('gemini');
+  }
+  return available;
+}
+
+/** Stream Claude (Sonnet) — yields text_delta chunks. */
+async function* claudeStream(args: ChatStreamArgs): AsyncIterable<string> {
   const client = createClient();
   const stream = await client.messages.stream({
     model: args.model ?? SONNET_MODEL,
@@ -87,6 +114,74 @@ export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
       yield evt.delta.text;
     }
   }
+}
+
+/** Stream Gemini (2.5 Flash) — yields text chunks. systemInstruction em config. */
+async function* geminiStream(args: ChatStreamArgs): AsyncIterable<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const ai = new GoogleGenAI({ apiKey });
+
+  const contents = args.messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  const stream = await ai.models.generateContentStream({
+    model: args.model ?? GEMINI_MODEL,
+    contents,
+    config: {
+      systemInstruction: args.system,
+      maxOutputTokens: args.maxTokens ?? 4096,
+    },
+  });
+
+  for await (const chunk of stream as AsyncIterable<unknown>) {
+    const raw = (chunk as { text?: unknown }).text;
+    const text = typeof raw === 'function' ? (raw as () => unknown).call(chunk) : raw;
+    if (typeof text === 'string' && text.length > 0) {
+      yield text;
+    }
+  }
+}
+
+const PROVIDER_STREAMS: Record<AiProvider, (args: ChatStreamArgs) => AsyncIterable<string>> = {
+  claude: claudeStream,
+  gemini: geminiStream,
+};
+
+/**
+ * Stream a chat completion com fallback Claude → Gemini.
+ *
+ * Fallback só ocorre se o provider primário falhar ANTES de emitir
+ * qualquer chunk. Falha após emitir propaga (cliente já recebeu texto
+ * parcial; trocar duplicaria). Sem nenhum provider configurado, lança erro.
+ */
+export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
+  const order = resolveProviderOrder();
+  if (order.length === 0) {
+    throw new Error(
+      'Nenhum provider AI configurado. Defina ANTHROPIC_API_KEY e/ou GEMINI_API_KEY.',
+    );
+  }
+
+  let lastError: unknown;
+  for (const provider of order) {
+    let emitted = false;
+    try {
+      for await (const chunk of PROVIDER_STREAMS[provider](args)) {
+        emitted = true;
+        yield chunk;
+      }
+      return; // provider concluiu com sucesso
+    } catch (err) {
+      lastError = err;
+      if (emitted) {
+        throw err; // mid-stream: não dá pra fallback
+      }
+      // falhou antes de emitir → tenta próximo provider
+    }
+  }
+  throw lastError ?? new Error('Todos os providers AI falharam.');
 }
 
 /**
