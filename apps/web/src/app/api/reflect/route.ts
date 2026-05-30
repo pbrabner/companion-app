@@ -4,18 +4,27 @@
  * empathic response from Claude Sonnet 4.6 back to the browser.
  *
  * Stream contract: text/plain chunked. First line is JSON metadata
- * `{"reflection_id": "<uuid>"}\n`. Subsequent chunks are raw Claude text.
- * Final line (only on Claude failure post-INSERT) is JSON
- * `\n{"error":"ai_unavailable","reflection_id":"<uuid>"}\n`.
+ * `{"reflection_id": "<uuid>"}\n`. Subsequent line is the buffered AI text
+ * (verified by clinical guard before sending). Final line (only on AI failure
+ * post-INSERT) is JSON `\n{"error":"ai_unavailable","reflection_id":"<uuid>"}\n`.
+ *
+ * Clinical guard (T-009b): buffers the full AI response before streaming.
+ * If clinical/diagnostic/prescriptive language detected → retry with strict
+ * prompt → CLINICAL_SAFE_FALLBACK if retry also fails or throws.
  *
  * Privacy gate (RF-007 / CA-T009-3 ★ALTO): never logs `content` or `body`,
  * only metadata (user_id, reflection_id, content_length, error_code).
+ * Guard warn calls also log only metadata — never AI response text.
  *
  * @module app/api/reflect/route
  */
 
 import { chatStream } from '@/shared/ai/client';
-import { REFLECTION_EMPATHIC_SYSTEM_PROMPT } from '@/shared/ai/prompts/reflection-empathic';
+import { CLINICAL_SAFE_FALLBACK, hasClinicalLanguage } from '@/shared/ai/clinical-guard';
+import {
+  REFLECTION_EMPATHIC_SYSTEM_PROMPT,
+  REFLECTION_EMPATHIC_SYSTEM_PROMPT_STRICT,
+} from '@/shared/ai/prompts/reflection-empathic';
 import { createServerClient } from '@/shared/db/server';
 
 const MIN_CONTENT_LEN = 3;
@@ -26,6 +35,16 @@ function jsonResponse(status: number, body: object): Response {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
+}
+
+async function bufferChatStream(
+  args: Parameters<typeof chatStream>[0],
+): Promise<string> {
+  const chunks: string[] = [];
+  for await (const chunk of chatStream(args)) {
+    chunks.push(chunk);
+  }
+  return chunks.join('');
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -93,12 +112,49 @@ export async function POST(request: Request): Promise<Response> {
         encoder.encode(JSON.stringify({ reflection_id: reflectionId }) + '\n'),
       );
       try {
-        for await (const chunk of chatStream({
+        const messages = [{ role: 'user' as const, content: trimmed }];
+
+        // Buffer full response — clinical guard needs complete text before
+        // streaming (can't retract bytes already sent to the client).
+        let text = await bufferChatStream({
           system: REFLECTION_EMPATHIC_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: trimmed }],
-        })) {
-          controller.enqueue(encoder.encode(chunk));
+          messages,
+        });
+
+        if (hasClinicalLanguage(text)) {
+          // Privacy gate: metadata only, never the flagged AI text.
+          console.warn('[reflect] clinical_guard_triggered', {
+            user_id: userId,
+            reflection_id: reflectionId,
+            content_length: trimmed.length,
+          });
+          try {
+            const retryText = await bufferChatStream({
+              system: REFLECTION_EMPATHIC_SYSTEM_PROMPT_STRICT,
+              messages,
+            });
+            if (hasClinicalLanguage(retryText)) {
+              console.warn('[reflect] clinical_guard_fallback', {
+                user_id: userId,
+                reflection_id: reflectionId,
+              });
+              text = CLINICAL_SAFE_FALLBACK;
+            } else {
+              text = retryText;
+            }
+          } catch (retryErr) {
+            const retryErrCode =
+              retryErr instanceof Error ? retryErr.constructor.name : 'unknown';
+            console.warn('[reflect] clinical_guard_retry_error', {
+              user_id: userId,
+              reflection_id: reflectionId,
+              error_code: retryErrCode,
+            });
+            text = CLINICAL_SAFE_FALLBACK;
+          }
         }
+
+        controller.enqueue(encoder.encode(text));
       } catch (err) {
         // Privacy gate: log error CLASS name only (e.g. "APIError",
         // "APIConnectionError"). Never err.message — Anthropic SDK errors
