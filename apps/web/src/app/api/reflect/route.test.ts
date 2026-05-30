@@ -45,6 +45,7 @@ vi.mock('@/shared/ai/client', () => ({
 
 vi.mock('@/shared/ai/prompts/reflection-empathic', () => ({
   REFLECTION_EMPATHIC_SYSTEM_PROMPT: 'TEST_PROMPT',
+  REFLECTION_EMPATHIC_SYSTEM_PROMPT_STRICT: 'TEST_PROMPT_STRICT',
   REFLECTION_EMPATHIC_PROMPT_VERSION: 'v1',
 }));
 
@@ -386,5 +387,149 @@ describe('POST /api/reflect — Sonnet invocation shape', () => {
     expect(args.system).toBe('TEST_PROMPT');
     expect(args.messages).toHaveLength(1);
     expect(args.messages[0]).toEqual({ role: 'user', content });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-009b: Clinical guard (buffer → detect → retry → fallback)
+// The clinical-guard module is NOT mocked — the real hasClinicalLanguage and
+// CLINICAL_SAFE_FALLBACK run against the mocked chatStream output.
+// ---------------------------------------------------------------------------
+
+describe('POST /api/reflect — clinical guard (T-009b)', () => {
+  async function streamBody(response: Response): Promise<string> {
+    // Strip the first metadata line; return the remaining buffered text.
+    const full = await readStream(response);
+    const nl = full.indexOf('\n');
+    return nl >= 0 ? full.slice(nl + 1) : full;
+  }
+
+  it('CA-6: clean response streams through without retry', async () => {
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: '66666666-6666-4666-8666-666666666666' },
+      error: null,
+    };
+    chatStreamMock.mockImplementation(() =>
+      makeAsyncIter(['Parece que você ', 'está passando por um momento difícil.']),
+    );
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    const text = await streamBody(r);
+
+    expect(text).toBe('Parece que você está passando por um momento difícil.');
+    expect(chatStreamMock).toHaveBeenCalledTimes(1); // no retry
+  });
+
+  it('CA-7: clinical response triggers retry; clean retry text is sent', async () => {
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: '77777777-7777-4777-8777-777777777777' },
+      error: null,
+    };
+    // 1st call: clinical (contains "você tem ansiedade"). 2nd call: clean.
+    chatStreamMock
+      .mockImplementationOnce(() => makeAsyncIter(['Você tem ansiedade, sem dúvida.']))
+      .mockImplementationOnce(() => makeAsyncIter(['Percebo que tem sido difícil pra você.']));
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    const text = await streamBody(r);
+
+    expect(text).toBe('Percebo que tem sido difícil pra você.');
+    expect(chatStreamMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('CA-8: clinical response + clinical retry → CLINICAL_SAFE_FALLBACK', async () => {
+    const { CLINICAL_SAFE_FALLBACK } = await import('@/shared/ai/clinical-guard');
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: '88888888-8888-4888-8888-888888888888' },
+      error: null,
+    };
+    chatStreamMock
+      .mockImplementationOnce(() => makeAsyncIter(['Você tem depressão.']))
+      .mockImplementationOnce(() => makeAsyncIter(['Tome um antidepressivo.']));
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    const text = await streamBody(r);
+
+    expect(text).toBe(CLINICAL_SAFE_FALLBACK);
+    expect(chatStreamMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('CA-9: clinical response + retry throws → CLINICAL_SAFE_FALLBACK', async () => {
+    const { CLINICAL_SAFE_FALLBACK } = await import('@/shared/ai/clinical-guard');
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: '99999999-9999-4999-8999-999999999999' },
+      error: null,
+    };
+    chatStreamMock
+      .mockImplementationOnce(() => makeAsyncIter(['Você sofre de transtorno bipolar.']))
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() {
+          throw new Error('upstream 503 on retry');
+        },
+      }));
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    const text = await streamBody(r);
+
+    expect(text).toBe(CLINICAL_SAFE_FALLBACK);
+    expect(chatStreamMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('CA-10: retry uses REFLECTION_EMPATHIC_SYSTEM_PROMPT_STRICT', async () => {
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      error: null,
+    };
+    chatStreamMock
+      .mockImplementationOnce(() => makeAsyncIter(['Você é narcisista.']))
+      .mockImplementationOnce(() => makeAsyncIter(['Obrigado por confiar isso a mim.']));
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    await readStream(r);
+
+    expect(chatStreamMock).toHaveBeenCalledTimes(2);
+    const firstArgs = chatStreamMock.mock.calls[0]?.[0] as { system: string };
+    const retryArgs = chatStreamMock.mock.calls[1]?.[0] as { system: string };
+    expect(firstArgs.system).toBe('TEST_PROMPT');
+    expect(retryArgs.system).toBe('TEST_PROMPT_STRICT');
+  });
+
+  it('CA-11 ★ALTO: guard warn never logs the flagged AI response text', async () => {
+    const SENTINEL = `<<AISENTINEL_${randomUUID()}_END>>`;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    getUserResult = { data: { user: { id: 'user-1' } }, error: null };
+    insertSingleResult = {
+      data: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+      error: null,
+    };
+    // Both responses clinical AND carry the sentinel — forces full guard path
+    // (trigger → retry → fallback), exercising every console.warn branch.
+    chatStreamMock
+      .mockImplementationOnce(() => makeAsyncIter([`Você tem ansiedade ${SENTINEL}`]))
+      .mockImplementationOnce(() => makeAsyncIter([`Tome remédio ${SENTINEL}`]));
+
+    const { POST } = await import('@/app/api/reflect/route');
+    const r = await POST(makeJsonRequest({ content: 'reflexão válida aqui' }));
+    await readStream(r);
+
+    const allCalls = JSON.stringify([
+      warnSpy.mock.calls,
+      logSpy.mock.calls,
+      errorSpy.mock.calls,
+    ]);
+    expect(allCalls).not.toContain(SENTINEL);
   });
 });
