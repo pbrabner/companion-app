@@ -10,7 +10,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_ROUTES = new Set(['/', '/login', '/auth/callback']);
+const PUBLIC_ROUTES = new Set(['/', '/login', '/auth/callback', '/auth/reset-password']);
 
 function readEnv(name: string): string {
   const value = process.env[name];

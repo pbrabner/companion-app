@@ -1,31 +1,30 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+/**
+ * ForgotPasswordForm — Client Component que dispara reset password
+ * email via Supabase. Renderiza inline em LoginForm quando state.kind
+ * === 'forgot'. Não confirma se email existe (anti-enumeration).
+ * @module app/login/ForgotPasswordForm
+ */
+
 import { useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
 import { createBrowserClient } from '../../shared/db/browser';
-import { ForgotPasswordForm } from './ForgotPasswordForm';
 
-const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
-  missing_code: 'Link inválido ou expirado. Tenta gerar um novo.',
-  exchange_failed: 'Não foi possível validar o link. Tenta gerar um novo.',
-};
-
-type FormState =
+type ForgotState =
   | { kind: 'idle' }
   | { kind: 'sending' }
   | { kind: 'sent'; email: string }
-  | { kind: 'error'; message: string }
-  | { kind: 'forgot' };
+  | { kind: 'error'; message: string };
 
-export function LoginForm() {
-  const searchParams = useSearchParams();
-  const callbackError = searchParams.get('error');
-  const callbackMessage = callbackError ? CALLBACK_ERROR_MESSAGES[callbackError] : null;
+export interface ForgotPasswordFormProps {
+  onBack: () => void;
+}
 
+export function ForgotPasswordForm({ onBack }: ForgotPasswordFormProps) {
   const [email, setEmail] = useState('');
-  const [state, setState] = useState<FormState>({ kind: 'idle' });
+  const [state, setState] = useState<ForgotState>({ kind: 'idle' });
 
   const isValid = /^\S+@\S+\.\S+$/.test(email);
   const isBusy = state.kind === 'sending';
@@ -38,11 +37,8 @@ export function LoginForm() {
 
     try {
       const supabase = createBrowserClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       });
 
       if (error) {
@@ -59,28 +55,22 @@ export function LoginForm() {
     }
   }
 
-  if (state.kind === 'forgot') {
-    return <ForgotPasswordForm onBack={() => setState({ kind: 'idle' })} />;
-  }
-
   if (state.kind === 'sent') {
     return (
       <div className="max-w-md w-full p-6 border rounded-lg bg-card text-card-foreground">
-        <h1 className="text-xl font-semibold mb-2">📬 Link enviado</h1>
+        <h1 className="text-xl font-semibold mb-2">📬 Verifica seu email</h1>
         <p className="text-muted-foreground">
-          Mandei um magic link pra <strong>{state.email}</strong>. Abre o email
-          e clica no link pra entrar.
+          Se esse email está cadastrado, você receberá um link em instantes pra
+          redefinir sua senha.
         </p>
         <p className="text-sm text-muted-foreground mt-4">
-          Não chegou em 1-2 min?{' '}
           <button
             type="button"
-            onClick={() => setState({ kind: 'idle' })}
+            onClick={onBack}
             className="underline hover:text-foreground"
           >
-            Tentar de novo
+            Voltar pro login
           </button>
-          .
         </p>
       </div>
     );
@@ -92,18 +82,18 @@ export function LoginForm() {
       className="max-w-md w-full p-6 border rounded-lg bg-card text-card-foreground space-y-4"
     >
       <div>
-        <h1 className="text-xl font-semibold">Entrar no Companion</h1>
+        <h1 className="text-xl font-semibold">Esqueci minha senha</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Vou te mandar um magic link no email. Sem senha.
+          Coloca seu email e te mando um link pra redefinir.
         </p>
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="email" className="text-sm font-medium block">
+        <label htmlFor="forgot-email" className="text-sm font-medium block">
           Email
         </label>
         <input
-          id="email"
+          id="forgot-email"
           type="email"
           autoComplete="email"
           autoFocus
@@ -119,22 +109,19 @@ export function LoginForm() {
       {state.kind === 'error' && (
         <p className="text-destructive text-sm">{state.message}</p>
       )}
-      {state.kind === 'idle' && callbackMessage && (
-        <p className="text-destructive text-sm">{callbackMessage}</p>
-      )}
 
       <Button type="submit" disabled={!isValid || isBusy} className="w-full">
-        {isBusy ? 'Enviando...' : 'Enviar link'}
+        {isBusy ? 'Enviando...' : 'Enviar link de reset'}
       </Button>
 
       <div className="text-center">
         <button
           type="button"
-          onClick={() => setState({ kind: 'forgot' })}
+          onClick={onBack}
           disabled={isBusy}
           className="text-sm text-muted-foreground underline hover:text-foreground disabled:opacity-50"
         >
-          Esqueci minha senha
+          Voltar pro login
         </button>
       </div>
     </form>
