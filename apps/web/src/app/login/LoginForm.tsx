@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
 import { createBrowserClient } from '../../shared/db/browser';
+import { ForgotPasswordForm } from './ForgotPasswordForm';
 
 const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   missing_code: 'Link inválido ou expirado. Tenta gerar um novo.',
@@ -15,7 +16,8 @@ type FormState =
   | { kind: 'idle' }
   | { kind: 'sending' }
   | { kind: 'sent'; email: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  | { kind: 'forgot' };
 
 export function LoginForm() {
   const searchParams = useSearchParams();
@@ -55,6 +57,10 @@ export function LoginForm() {
         message: err instanceof Error ? err.message : 'Erro inesperado.',
       });
     }
+  }
+
+  if (state.kind === 'forgot') {
+    return <ForgotPasswordForm onBack={() => setState({ kind: 'idle' })} />;
   }
 
   if (state.kind === 'sent') {
@@ -120,6 +126,17 @@ export function LoginForm() {
       <Button type="submit" disabled={!isValid || isBusy} className="w-full">
         {isBusy ? 'Enviando...' : 'Enviar link'}
       </Button>
+
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => setState({ kind: 'forgot' })}
+          disabled={isBusy}
+          className="text-sm text-muted-foreground underline hover:text-foreground disabled:opacity-50"
+        >
+          Esqueci minha senha
+        </button>
+      </div>
     </form>
   );
 }
