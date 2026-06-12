@@ -3,6 +3,11 @@
  * session and onboarding status. Validates the three binary acceptance
  * clauses of T-007 (no-session redirect, missing-onboarding redirect,
  * happy path passthrough) plus public-route allowlist coverage.
+ *
+ * Middleware é código server-side: roda em ambiente node, não jsdom.
+ * Em jsdom o `instanceof Headers` interno do next/server falha cross-realm
+ * (Headers do undici vs Headers do jsdom).
+ * @vitest-environment node
  * @module middleware.test
  */
 
@@ -120,7 +125,7 @@ describe('middleware — clause 3: authenticated and onboarded', () => {
 // ---------------------------------------------------------------------------
 
 describe('middleware — public routes bypass auth gate', () => {
-  it.each(['/', '/login', '/auth/callback'])(
+  it.each(['/', '/login', '/auth/callback', '/auth/reset-password'])(
     'lets %s through without redirect even when unauthenticated',
     async (pathname) => {
       const { middleware } = await import('@/middleware');
