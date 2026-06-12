@@ -4,6 +4,7 @@
  * @module shared/db/types
  */
 
+
 export type Json =
   | string
   | number
@@ -107,6 +108,7 @@ export type Database = {
           body: string
           created_at: string
           id: string
+          processed_at: string | null
           prompt_used: string | null
           user_id: string
         }
@@ -114,6 +116,7 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
+          processed_at?: string | null
           prompt_used?: string | null
           user_id: string
         }
@@ -121,6 +124,7 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
+          processed_at?: string | null
           prompt_used?: string | null
           user_id?: string
         }
