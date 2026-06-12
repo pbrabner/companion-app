@@ -36,6 +36,9 @@ coverage/
 playwright-report/
 test-results/
 
+# Storybook build (G-RF-3 — antes só no design-system/.gitignore)
+storybook-static/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
