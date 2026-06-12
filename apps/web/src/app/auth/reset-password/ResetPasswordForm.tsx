@@ -17,7 +17,7 @@
  */
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../../design-system/components/Button';
 import { createBrowserClient } from '../../../shared/db/browser';
@@ -38,9 +38,15 @@ export function ResetPasswordForm() {
   const [state, setState] = useState<ResetState>({ kind: 'waiting' });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // A sessão de recovery é estabelecida no client que recebe o evento
+  // PASSWORD_RECOVERY; updateUser PRECISA rodar nesse mesmo client.
+  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(
+    null,
+  );
 
   useEffect(() => {
     const supabase = createBrowserClient();
+    supabaseRef.current = supabase;
 
     const {
       data: { subscription },
@@ -59,6 +65,7 @@ export function ResetPasswordForm() {
     return () => {
       subscription.unsubscribe();
       window.clearTimeout(timeoutId);
+      supabaseRef.current = null;
     };
   }, []);
 
@@ -78,7 +85,8 @@ export function ResetPasswordForm() {
     setState({ kind: 'submitting' });
 
     try {
-      const supabase = createBrowserClient();
+      const supabase = supabaseRef.current;
+      if (!supabase) return;
       const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
