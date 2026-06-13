@@ -105,6 +105,8 @@ export type Database = {
       }
       journal_entries: {
         Row: {
+          ai_response: string | null
+          ai_response_at: string | null
           body: string
           created_at: string
           id: string
@@ -113,6 +115,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_response?: string | null
+          ai_response_at?: string | null
           body: string
           created_at?: string
           id?: string
@@ -121,6 +125,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_response?: string | null
+          ai_response_at?: string | null
           body?: string
           created_at?: string
           id?: string
