@@ -17,6 +17,7 @@
 import { chatStream } from '@/shared/ai/client';
 import { REFLECTION_EMPATHIC_SYSTEM_PROMPT } from '@/shared/ai/prompts/reflection-empathic';
 import { createServerClient } from '@/shared/db/server';
+import { createServiceClient } from '@/shared/db/service';
 
 const MIN_CONTENT_LEN = 3;
 const MAX_CONTENT_LEN = 8000;
@@ -26,6 +27,40 @@ function jsonResponse(status: number, body: object): Response {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
+}
+
+const SAVE_TIMEOUT_MS = 5000;
+
+/**
+ * Persiste a resposta completa da IA best-effort (D-RH-2). NUNCA lança e
+ * resolve em no máximo SAVE_TIMEOUT_MS — falha ou stall aqui não podem
+ * segurar o close() do stream já entregue ao usuário.
+ * Privacy gate: loga só reflection_id + error_code, nunca o texto.
+ */
+async function saveAiResponse(reflectionId: string, text: string): Promise<void> {
+  try {
+    const service = createServiceClient();
+    const save = service
+      .from('journal_entries')
+      .update({ ai_response: text, ai_response_at: new Date().toISOString() })
+      .eq('id', reflectionId)
+      .then(({ error }) => (error ? (error.code ?? 'unknown') : null));
+    const timeout = new Promise<string>((resolve) => {
+      setTimeout(() => resolve('save_timeout'), SAVE_TIMEOUT_MS).unref?.();
+    });
+    const errorCode = await Promise.race([save, timeout]);
+    if (errorCode !== null) {
+      console.error('[reflect] ai_response_save_failed', {
+        reflection_id: reflectionId,
+        error_code: errorCode,
+      });
+    }
+  } catch (err) {
+    console.error('[reflect] ai_response_save_failed', {
+      reflection_id: reflectionId,
+      error_code: err instanceof Error ? err.constructor.name : 'unknown',
+    });
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -92,13 +127,17 @@ export async function POST(request: Request): Promise<Response> {
       controller.enqueue(
         encoder.encode(JSON.stringify({ reflection_id: reflectionId }) + '\n'),
       );
+      let accumulated = '';
+      let aiSucceeded = false;
       try {
         for await (const chunk of chatStream({
           system: REFLECTION_EMPATHIC_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: trimmed }],
         })) {
+          accumulated += chunk;
           controller.enqueue(encoder.encode(chunk));
         }
+        aiSucceeded = true;
       } catch (err) {
         // Privacy gate: log error CLASS name only (e.g. "APIError",
         // "APIConnectionError"). Never err.message — Anthropic SDK errors
@@ -119,6 +158,9 @@ export async function POST(request: Request): Promise<Response> {
           ),
         );
       } finally {
+        if (aiSucceeded) {
+          await saveAiResponse(reflectionId, accumulated);
+        }
         controller.close();
       }
     },
