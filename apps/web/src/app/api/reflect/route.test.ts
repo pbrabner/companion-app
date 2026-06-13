@@ -48,6 +48,18 @@ vi.mock('@/shared/ai/prompts/reflection-empathic', () => ({
   REFLECTION_EMPATHIC_PROMPT_VERSION: 'v1',
 }));
 
+// --- Mocks reflections-history (service client, caminho de escrita) ---
+type ServiceUpdateResult = { error: { code?: string } | null };
+let serviceUpdateResult: ServiceUpdateResult = { error: null };
+
+const serviceUpdateMock = vi.fn();
+const serviceEqMock = vi.fn();
+const serviceFromMock = vi.fn();
+
+vi.mock('@/shared/db/service', () => ({
+  createServiceClient: vi.fn(() => ({ from: serviceFromMock })),
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -386,5 +398,99 @@ describe('POST /api/reflect — Sonnet invocation shape', () => {
     expect(args.system).toBe('TEST_PROMPT');
     expect(args.messages).toHaveLength(1);
     expect(args.messages[0]).toEqual({ role: 'user', content });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reflections-history: persistencia best-effort da resposta IA (CA-RH-1..4)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/reflect — ai_response save (reflections-history)', () => {
+  const USER = { id: 'user-rh' };
+  const REFLECTION_ID = 'rh-reflection-1';
+
+  beforeEach(() => {
+    serviceUpdateResult = { error: null };
+    serviceFromMock.mockImplementation(() => ({
+      update: serviceUpdateMock.mockImplementation(() => ({
+        eq: serviceEqMock.mockImplementation(async () => serviceUpdateResult),
+      })),
+    }));
+    getUserResult = { data: { user: USER }, error: null };
+    insertSingleResult = { data: { id: REFLECTION_ID }, error: null };
+  });
+
+  it('CA-RH-1: stream completo → service update com texto completo + ai_response_at', async () => {
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['Olá', ' mundo']));
+    const { POST } = await import('@/app/api/reflect/route');
+
+    const response = await POST(makeJsonRequest({ content: 'minha reflexão' }));
+    await readStream(response);
+
+    expect(serviceFromMock).toHaveBeenCalledWith('journal_entries');
+    expect(serviceUpdateMock).toHaveBeenCalledWith({
+      ai_response: 'Olá mundo',
+      ai_response_at: expect.any(String),
+    });
+    expect(serviceEqMock).toHaveBeenCalledWith('id', REFLECTION_ID);
+  });
+
+  it('CA-RH-2: update falha → stream do usuário intacto + log sem conteúdo', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    serviceUpdateResult = { error: { code: '42P01' } };
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['resposta ok']));
+    const { POST } = await import('@/app/api/reflect/route');
+
+    const response = await POST(makeJsonRequest({ content: 'minha reflexão' }));
+    const text = await readStream(response);
+
+    expect(text).toContain('resposta ok');
+    expect(text).not.toContain('ai_unavailable');
+    const saveLog = consoleSpy.mock.calls.find(
+      (c) => c[0] === '[reflect] ai_response_save_failed',
+    );
+    expect(saveLog).toBeDefined();
+    expect(JSON.stringify(saveLog)).not.toContain('resposta ok');
+    expect(JSON.stringify(saveLog)).not.toContain('minha reflexão');
+  });
+
+  it('CA-RH-3: erro do modelo → nada salvo (nem parcial)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    chatStreamMock.mockImplementation(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield 'parcial';
+        throw new Error('boom');
+      },
+    }));
+    const { POST } = await import('@/app/api/reflect/route');
+
+    const response = await POST(makeJsonRequest({ content: 'minha reflexão' }));
+    const text = await readStream(response);
+
+    expect(text).toContain('ai_unavailable');
+    expect(serviceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('CA-RH-4 ★ALTO: sentinel (body + resposta IA) nunca em logs, mesmo com save falhando', async () => {
+    const sentinelBody = `<<SENTINEL_${randomUUID()}_BODY>>`;
+    const sentinelAi = `<<SENTINEL_${randomUUID()}_AI>>`;
+    const spies = [
+      vi.spyOn(console, 'log').mockImplementation(() => {}),
+      vi.spyOn(console, 'error').mockImplementation(() => {}),
+      vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      vi.spyOn(console, 'info').mockImplementation(() => {}),
+    ];
+    serviceUpdateResult = { error: { code: 'XX' } };
+    chatStreamMock.mockImplementation(() => makeAsyncIter([sentinelAi]));
+    const { POST } = await import('@/app/api/reflect/route');
+
+    const response = await POST(makeJsonRequest({ content: `reflexão com ${sentinelBody}` }));
+    await readStream(response);
+
+    for (const spy of spies) {
+      const all = JSON.stringify(spy.mock.calls);
+      expect(all).not.toContain(sentinelBody);
+      expect(all).not.toContain(sentinelAi);
+    }
   });
 });
