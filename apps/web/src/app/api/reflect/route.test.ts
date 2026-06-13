@@ -493,4 +493,33 @@ describe('POST /api/reflect — ai_response save (reflections-history)', () => {
       expect(all).not.toContain(sentinelAi);
     }
   });
+
+  it('CA-RH-2b: save que trava → resolve em SAVE_TIMEOUT_MS e loga save_timeout (stream fecha)', async () => {
+    vi.useFakeTimers();
+    try {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // eq() retorna promise que NUNCA resolve (simula stall de rede)
+      serviceFromMock.mockImplementation(() => ({
+        update: serviceUpdateMock.mockImplementation(() => ({
+          eq: serviceEqMock.mockImplementation(() => new Promise(() => {})),
+        })),
+      }));
+      chatStreamMock.mockImplementation(() => makeAsyncIter(['resposta ok']));
+      const { POST } = await import('@/app/api/reflect/route');
+
+      const response = await POST(makeJsonRequest({ content: 'minha reflexão' }));
+      const readPromise = readStream(response);
+      await vi.advanceTimersByTimeAsync(5000);
+      const text = await readPromise;
+
+      expect(text).toContain('resposta ok');
+      const saveLog = consoleSpy.mock.calls.find(
+        (c) => c[0] === '[reflect] ai_response_save_failed',
+      );
+      expect(saveLog).toBeDefined();
+      expect(JSON.stringify(saveLog)).toContain('save_timeout');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

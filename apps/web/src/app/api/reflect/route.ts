@@ -29,22 +29,30 @@ function jsonResponse(status: number, body: object): Response {
   });
 }
 
+const SAVE_TIMEOUT_MS = 5000;
+
 /**
- * Persiste a resposta completa da IA best-effort (D-RH-2). NUNCA lança —
- * falha aqui não pode afetar o stream já entregue ao usuário.
+ * Persiste a resposta completa da IA best-effort (D-RH-2). NUNCA lança e
+ * resolve em no máximo SAVE_TIMEOUT_MS — falha ou stall aqui não podem
+ * segurar o close() do stream já entregue ao usuário.
  * Privacy gate: loga só reflection_id + error_code, nunca o texto.
  */
 async function saveAiResponse(reflectionId: string, text: string): Promise<void> {
   try {
     const service = createServiceClient();
-    const { error } = await service
+    const save = service
       .from('journal_entries')
       .update({ ai_response: text, ai_response_at: new Date().toISOString() })
-      .eq('id', reflectionId);
-    if (error) {
+      .eq('id', reflectionId)
+      .then(({ error }) => (error ? (error.code ?? 'unknown') : null));
+    const timeout = new Promise<string>((resolve) => {
+      setTimeout(() => resolve('save_timeout'), SAVE_TIMEOUT_MS).unref?.();
+    });
+    const errorCode = await Promise.race([save, timeout]);
+    if (errorCode !== null) {
       console.error('[reflect] ai_response_save_failed', {
         reflection_id: reflectionId,
-        error_code: error.code ?? 'unknown',
+        error_code: errorCode,
       });
     }
   } catch (err) {
