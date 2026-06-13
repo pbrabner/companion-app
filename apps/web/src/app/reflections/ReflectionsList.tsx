@@ -12,7 +12,7 @@
  */
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
 
@@ -62,12 +62,13 @@ function formatDate(iso: string): string {
 
 export function ReflectionsList() {
   const [state, setState] = useState<ListState>({ kind: 'loading' });
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
     (async () => {
       const result = await fetchPage(null);
-      if (cancelled) return;
+      if (cancelledRef.current) return;
       if ('errorCode' in result) {
         setState({ kind: 'error', code: result.errorCode });
       } else if (result.reflections.length === 0) {
@@ -77,7 +78,7 @@ export function ReflectionsList() {
       }
     })();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, []);
 
@@ -86,6 +87,7 @@ export function ReflectionsList() {
     const { items, nextCursor } = state;
     setState({ kind: 'loadingMore', items, nextCursor });
     const result = await fetchPage(nextCursor);
+    if (cancelledRef.current) return;
     if ('errorCode' in result) {
       setState({ kind: 'error', code: result.errorCode });
       return;
@@ -116,7 +118,7 @@ export function ReflectionsList() {
 
   if (state.kind === 'error') {
     return (
-      <p className="text-destructive text-center">
+      <p role="alert" className="text-destructive text-center">
         {state.code === 'auth'
           ? 'Sessão expirada. Entra de novo pra ver teu histórico.'
           : 'Não foi possível carregar o histórico. Tenta de novo.'}
