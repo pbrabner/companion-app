@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
+import { toast } from '../../design-system/components/use-toast';
 import { MarkdownResponse } from '../reflect/MarkdownResponse';
 
 const PAGE_SIZE = 20;
@@ -90,7 +91,16 @@ export function ReflectionsList() {
     const result = await fetchPage(nextCursor);
     if (cancelledRef.current) return;
     if ('errorCode' in result) {
-      setState({ kind: 'error', code: result.errorCode });
+      if (result.errorCode === 'auth') {
+        setState({ kind: 'error', code: 'auth' });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Não foi possível carregar mais',
+          description: 'Tenta de novo.',
+        });
+        setState({ kind: 'ready', items, nextCursor });
+      }
       return;
     }
     setState({

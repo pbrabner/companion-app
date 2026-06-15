@@ -4,10 +4,16 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ReflectForm } from './ReflectForm';
 
+const toastMock = vi.fn();
+vi.mock('../../design-system/components/use-toast', () => ({
+  toast: (...args: unknown[]) => toastMock(...args),
+}));
+
 const mockFetch = vi.fn();
 beforeEach(() => {
   global.fetch = mockFetch as unknown as typeof fetch;
   mockFetch.mockReset();
+  toastMock.mockClear();
 });
 
 function streamResponse(chunks: string[], status = 200): Response {
@@ -111,6 +117,26 @@ describe('ReflectForm', () => {
       expect(screen.getByText(/indispon/i)).toBeInTheDocument();
       expect(screen.getByText(/abc-123/i)).toBeInTheDocument();
     });
+  });
+
+  it('CA-UI-7: erro de rede → dispara toast destructive e some o <p> inline de network', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('offline'));
+    render(<ReflectForm />);
+    await userEvent.type(screen.getByRole('textbox'), 'Minha reflexão aqui');
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })),
+    );
+    expect(screen.queryByText('Erro de conexão. Tenta de novo.')).toBeNull();
+  });
+
+  it('CA-UI-8: too_long continua inline (sem toast)', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('{"error":"too_long"}', { status: 413 }));
+    render(<ReflectForm />);
+    await userEvent.type(screen.getByRole('textbox'), 'Minha reflexão aqui');
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    await waitFor(() => expect(screen.getByText(/muito longa/i)).toBeTruthy());
+    expect(toastMock).not.toHaveBeenCalled();
   });
 
   it('disables button during submitting', async () => {

@@ -20,6 +20,11 @@ type ApiPage = {
   next_cursor: string | null;
 };
 
+const toastMock = vi.fn();
+vi.mock('../../design-system/components/use-toast', () => ({
+  toast: (...args: unknown[]) => toastMock(...args),
+}));
+
 const fetchMock = vi.fn();
 
 function jsonOk(page: ApiPage): Response {
@@ -38,6 +43,7 @@ function makeItem(i: number, ai: string | null = `resposta ${i}`): ApiPage['refl
 
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
+  toastMock.mockClear();
 });
 
 afterEach(() => {
@@ -87,6 +93,19 @@ describe('ReflectionsList', () => {
     expect(screen.queryByRole('button', { name: 'Carregar mais' })).toBeNull(); // fim
     const secondCallUrl = String(fetchMock.mock.calls[1]?.[0]);
     expect(secondCallUrl).toContain('before=2026-06-01T12%3A00%3A00Z');
+  });
+
+  it('CA-UI-9: falha no Carregar mais → toast + preserva itens (não cai pra erro tela cheia)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonOk({ reflections: [makeItem(1)], next_cursor: '2026-06-01T12:00:00Z' }),
+    );
+    render(<ReflectionsList />);
+    const btn = await screen.findByRole('button', { name: 'Carregar mais' });
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+    await userEvent.click(btn);
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(screen.getByText('reflexão número 1')).toBeTruthy();
+    expect(screen.queryByText('Não foi possível carregar o histórico. Tenta de novo.')).toBeNull();
   });
 
   it('CA-UI-5: ai_response renderiza markdown (**x** → strong); body fica plano', async () => {

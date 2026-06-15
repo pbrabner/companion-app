@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '../../design-system/components/Button';
+import { toast } from '../../design-system/components/use-toast';
 import { parseReflectStream } from './parse-stream';
 import { MarkdownResponse } from './MarkdownResponse';
 
@@ -44,12 +45,14 @@ export function ReflectForm() {
           setState({ kind: 'error', code: 'too_short' });
         } else {
           setState({ kind: 'error', code: 'network' });
+          toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Tenta de novo.' });
         }
         return;
       }
 
       if (!response.body) {
         setState({ kind: 'error', code: 'network' });
+        toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Tenta de novo.' });
         return;
       }
 
@@ -73,6 +76,11 @@ export function ReflectForm() {
             partial: accText,
             reflectionId: event.reflection_id ?? reflectionId ?? undefined,
           });
+          toast({
+            variant: 'destructive',
+            title: 'IA indisponível',
+            description: 'Tua reflexão foi salva. Tenta a resposta de novo daqui a pouco.',
+          });
           return;
         }
       }
@@ -80,6 +88,7 @@ export function ReflectForm() {
       setState({ kind: 'done', text: accText, reflectionId });
     } catch {
       setState({ kind: 'error', code: 'network' });
+      toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Tenta de novo.' });
     }
   }
 
@@ -135,9 +144,6 @@ export function ReflectForm() {
       {state.kind === 'error' && state.code === 'too_short' && (
         <p className="text-destructive text-sm">Escreve pelo menos {MIN_LEN} caracteres.</p>
       )}
-      {state.kind === 'error' && state.code === 'network' && (
-        <p className="text-destructive text-sm">Erro de conexão. Tenta de novo.</p>
-      )}
 
       {state.kind === 'streaming' && (
         <div className="border-t pt-4">
@@ -162,7 +168,6 @@ export function ReflectForm() {
           <p className="whitespace-pre-wrap text-foreground">{state.partial}</p>
           <p className="text-sm text-muted-foreground mt-2">
             Sua reflexão foi salva (ID: <code>{state.reflectionId}</code>) mas a resposta da IA falhou.
-            Tenta de novo daqui a pouco.
           </p>
         </div>
       )}
