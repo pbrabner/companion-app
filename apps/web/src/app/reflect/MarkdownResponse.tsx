@@ -13,7 +13,7 @@
 import ReactMarkdown, { type Components } from 'react-markdown';
 
 const components: Components = {
-  p: ({ children }) => <p className="text-foreground whitespace-pre-wrap">{children}</p>,
+  p: ({ children }) => <p className="text-foreground">{children}</p>,
   ul: ({ children }) => <ul className="list-disc pl-5 space-y-1 text-foreground">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1 text-foreground">{children}</ol>,
   li: ({ children }) => <li>{children}</li>,
