@@ -66,6 +66,18 @@ describe('ReflectForm', () => {
     });
   });
 
+  it('CA-UI-4: resposta no estado done renderiza markdown (**forte** → <strong>)', async () => {
+    mockFetch.mockResolvedValueOnce(streamResponse([
+      '{"reflection_id":"abc-123"}\n',
+      'Isso é **forte**',
+    ]));
+    const { container } = render(<ReflectForm />);
+    await userEvent.type(screen.getByRole('textbox'), 'Minha reflexão aqui');
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    await waitFor(() => expect(container.querySelector('strong')).not.toBeNull());
+    expect(container.querySelector('strong')?.textContent).toBe('forte');
+  });
+
   it('shows auth error card on 401', async () => {
     mockFetch.mockResolvedValueOnce(new Response('{"error":"unauthenticated"}', { status: 401 }));
     render(<ReflectForm />);

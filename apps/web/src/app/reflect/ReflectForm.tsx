@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '../../design-system/components/Button';
 import { parseReflectStream } from './parse-stream';
+import { MarkdownResponse } from './MarkdownResponse';
 
 const MIN_LEN = 3;
 const MAX_LEN = 8000;
@@ -138,13 +139,20 @@ export function ReflectForm() {
         <p className="text-destructive text-sm">Erro de conexão. Tenta de novo.</p>
       )}
 
-      {(state.kind === 'streaming' || state.kind === 'done') && (
+      {state.kind === 'streaming' && (
         <div className="border-t pt-4">
           <h2 className="text-lg font-semibold mb-2">✨ Resposta</h2>
           <p className="whitespace-pre-wrap text-foreground">
             {state.text}
-            {state.kind === 'streaming' && <span className="animate-pulse">▊</span>}
+            <span className="animate-pulse">▊</span>
           </p>
+        </div>
+      )}
+
+      {state.kind === 'done' && (
+        <div className="border-t pt-4">
+          <h2 className="text-lg font-semibold mb-2">✨ Resposta</h2>
+          <MarkdownResponse>{state.text}</MarkdownResponse>
         </div>
       )}
 

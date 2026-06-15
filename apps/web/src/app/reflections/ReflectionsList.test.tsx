@@ -89,6 +89,16 @@ describe('ReflectionsList', () => {
     expect(secondCallUrl).toContain('before=2026-06-01T12%3A00%3A00Z');
   });
 
+  it('CA-UI-5: ai_response renderiza markdown (**x** → strong); body fica plano', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonOk({ reflections: [makeItem(1, '**resposta forte**')], next_cursor: null }),
+    );
+    const { container } = render(<ReflectionsList />);
+    await waitFor(() => expect(container.querySelector('strong')).not.toBeNull());
+    expect(container.querySelector('strong')?.textContent).toBe('resposta forte');
+    expect(screen.getByText('reflexão número 1')).toBeTruthy();
+  });
+
   it('CA-RH-11: ai_response NULL → "Sem resposta registrada"', async () => {
     fetchMock.mockResolvedValueOnce(jsonOk({ reflections: [makeItem(1, null)], next_cursor: null }));
     render(<ReflectionsList />);

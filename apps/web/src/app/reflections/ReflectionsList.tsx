@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
+import { MarkdownResponse } from '../reflect/MarkdownResponse';
 
 const PAGE_SIZE = 20;
 
@@ -141,10 +142,8 @@ export function ReflectionsList() {
           </time>
           <p className="whitespace-pre-wrap">{item.body}</p>
           {item.ai_response !== null ? (
-            <div className="border-l-2 border-muted pl-4">
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {item.ai_response}
-              </p>
+            <div className="border-l-2 border-muted pl-4 text-sm text-muted-foreground">
+              <MarkdownResponse>{item.ai_response}</MarkdownResponse>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">Sem resposta registrada</p>
