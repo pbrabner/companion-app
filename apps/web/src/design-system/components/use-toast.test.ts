@@ -3,11 +3,15 @@
  * @module design-system/components/use-toast.test
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { useToast, toast, TOAST_LIMIT } from './use-toast';
+import { useToast, toast, TOAST_LIMIT, __resetToastsForTest } from './use-toast';
 
 describe('use-toast', () => {
+  beforeEach(() => {
+    __resetToastsForTest();
+  });
+
   it('CA-UI-6a: toast() adiciona à fila', () => {
     const { result } = renderHook(() => useToast());
     act(() => {
@@ -15,7 +19,6 @@ describe('use-toast', () => {
     });
     expect(result.current.toasts.length).toBeGreaterThanOrEqual(1);
     expect(result.current.toasts[0]?.title).toBe('Oi');
-    act(() => result.current.dismiss());
   });
 
   it('CA-UI-6b: dismiss marca o toast como fechado (open=false) ou remove', () => {
@@ -29,7 +32,6 @@ describe('use-toast', () => {
     });
     const t = result.current.toasts.find((x) => x.id === id);
     expect(t === undefined || t.open === false).toBe(true);
-    act(() => result.current.dismiss());
   });
 
   it('CA-UI-6c: TOAST_LIMIT respeitado (fila não cresce além do limite)', () => {
@@ -38,6 +40,5 @@ describe('use-toast', () => {
       for (let i = 0; i < TOAST_LIMIT + 3; i++) toast({ title: `t${i}` });
     });
     expect(result.current.toasts.length).toBeLessThanOrEqual(TOAST_LIMIT);
-    act(() => result.current.dismiss());
   });
 });

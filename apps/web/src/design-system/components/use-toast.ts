@@ -89,3 +89,14 @@ export function useToast() {
     dismiss: (id?: string) => dispatch({ type: 'DISMISS', id }),
   };
 }
+
+/**
+ * Reseta o estado module-level. APENAS para testes (isolamento entre casos).
+ */
+export function __resetToastsForTest(): void {
+  for (const timer of removeTimers.values()) clearTimeout(timer);
+  removeTimers.clear();
+  memoryState = { toasts: [] };
+  listeners.length = 0;
+  count = 0;
+}
