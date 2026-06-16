@@ -113,4 +113,30 @@ describe('maybeSynthesizeMemory + threshold', () => {
       expect(JSON.stringify(spy.mock.calls)).not.toContain(sentinel);
     }
   });
+
+  it('CA-MM-4b: last_synthesized_at = created_at da reflexão mais nova do batch (não now)', async () => {
+    memoryRow = { data: { findings: [], last_synthesized_at: null, source_count: 0 }, error: null };
+    // ASC: array em ordem cronológica; a mais nova é a última
+    newReflections = { data: [
+      { id: 'r0', body: 'a', ai_response: null, created_at: '2026-06-01T12:00:00Z' },
+      { id: 'r1', body: 'b', ai_response: null, created_at: '2026-06-02T12:00:00Z' },
+      { id: 'r2', body: 'c', ai_response: null, created_at: '2026-06-03T12:00:00Z' },
+    ], error: null };
+    classifyHaikuMock.mockResolvedValueOnce([
+      { text: 'p', confidence: 0.3, first_seen: 'a', last_seen: 'b', evidence_count: 3 },
+    ]);
+    const { maybeSynthesizeMemory } = await import('./synthesize');
+    await maybeSynthesizeMemory(USER, makeSupabase() as never);
+    const upserted = upsertMock.mock.calls[0]![0] as { last_synthesized_at: string };
+    expect(upserted.last_synthesized_at).toBe('2026-06-03T12:00:00Z');
+  });
+
+  it('CA-MM-4c: findings vazio do modelo (usuário novo) → NÃO faz upsert (watermark não avança)', async () => {
+    memoryRow = { data: { findings: [], last_synthesized_at: null, source_count: 0 }, error: null };
+    newReflections = { data: reflections(3), error: null };
+    classifyHaikuMock.mockResolvedValueOnce([]); // modelo devolve array vazio
+    const { maybeSynthesizeMemory } = await import('./synthesize');
+    await maybeSynthesizeMemory(USER, makeSupabase() as never);
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
 });

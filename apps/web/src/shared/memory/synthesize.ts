@@ -53,7 +53,7 @@ export async function maybeSynthesizeMemory(userId: string, supabase: Supabase):
       ? base.gt('created_at', current.last_synthesized_at)
       : base;
     const { data: rows } = await filtered
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
       .limit(MAX_FINDINGS);
     const newReflections = (rows as NewReflection[] | null) ?? [];
 
@@ -78,7 +78,7 @@ async function synthesizeMemory(
     'FINDINGS ATUAIS:',
     JSON.stringify(current.findings),
     '',
-    'REFLEXÕES NOVAS (mais recentes primeiro):',
+    'REFLEXÕES NOVAS (ordem cronológica):',
     ...newReflections.map((r) => `- [${r.created_at}] ${r.body}${r.ai_response ? `\n  (resposta: ${r.ai_response})` : ''}`),
   ].join('\n');
 
@@ -89,14 +89,14 @@ async function synthesizeMemory(
   });
 
   const findings = sanitizeFindings(extractFindings(raw)).slice(0, MAX_FINDINGS);
-  if (findings.length === 0 && current.findings.length > 0) {
-    return; // modelo devolveu vazio mas já tínhamos memória — não destrói.
+  if (findings.length === 0) {
+    return; // resultado vazio NÃO avança o watermark — re-examina na próxima.
   }
 
   const { error } = await supabase.from('user_memory').upsert({
     user_id: userId,
     findings,
-    last_synthesized_at: new Date().toISOString(),
+    last_synthesized_at: newReflections[newReflections.length - 1]!.created_at,
     source_count: current.source_count + newReflections.length,
     updated_at: new Date().toISOString(),
   });
