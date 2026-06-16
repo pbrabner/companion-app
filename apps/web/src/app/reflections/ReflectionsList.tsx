@@ -15,6 +15,8 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../design-system/components/Button';
+import { toast } from '../../design-system/components/use-toast';
+import { MarkdownResponse } from '../reflect/MarkdownResponse';
 
 const PAGE_SIZE = 20;
 
@@ -89,7 +91,16 @@ export function ReflectionsList() {
     const result = await fetchPage(nextCursor);
     if (cancelledRef.current) return;
     if ('errorCode' in result) {
-      setState({ kind: 'error', code: result.errorCode });
+      if (result.errorCode === 'auth') {
+        setState({ kind: 'error', code: 'auth' });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Não foi possível carregar mais',
+          description: 'Tenta de novo.',
+        });
+        setState({ kind: 'ready', items, nextCursor });
+      }
       return;
     }
     setState({
@@ -141,10 +152,8 @@ export function ReflectionsList() {
           </time>
           <p className="whitespace-pre-wrap">{item.body}</p>
           {item.ai_response !== null ? (
-            <div className="border-l-2 border-muted pl-4">
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {item.ai_response}
-              </p>
+            <div className="border-l-2 border-muted pl-4 text-sm text-muted-foreground">
+              <MarkdownResponse>{item.ai_response}</MarkdownResponse>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">Sem resposta registrada</p>

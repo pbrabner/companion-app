@@ -7,6 +7,7 @@
 import type { ReactNode } from 'react';
 
 import '../design-system/globals.css';
+import { Toaster } from '../design-system/components/Toaster';
 import { Header } from './components/Header';
 
 export const metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <Header />
         {children}
+        <Toaster />
       </body>
     </html>
   );
