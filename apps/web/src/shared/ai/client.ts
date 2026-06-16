@@ -10,10 +10,14 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
 /** Verified model IDs for the Companion project. */
 export const SONNET_MODEL = 'claude-sonnet-4-6';
 export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+
+/** Modelo Gemini de fallback — verificar disponibilidade na conta. */
+export const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
 
 /** Chat message role accepted by the helpers. */
 export type ChatRole = 'user' | 'assistant';
@@ -90,32 +94,62 @@ export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
 }
 
 /**
+ * Fallback de classificação via Gemini quando o Anthropic está indisponível.
+ * Mesmo contrato de saída do classifyHaiku (JSON parseado). NÃO loga conteúdo.
+ */
+async function classifyGeminiFallback<T>(system: string, prompt: string): Promise<T> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const genai = new GoogleGenAI({ apiKey });
+  const result = await genai.models.generateContent({
+    model: GEMINI_FALLBACK_MODEL,
+    contents: prompt,
+    config: { systemInstruction: system },
+  });
+  const text = (result as { text?: string }).text;
+  if (typeof text !== 'string') {
+    throw new Error('classifyGeminiFallback: resposta sem texto');
+  }
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  return JSON.parse(cleaned) as T;
+}
+
+/**
  * Classify input via Haiku 4.5 and return a parsed JSON object. The system
  * prompt instructs the model to reply with raw JSON only (no prose, no code
  * fences); the first text content block is parsed via JSON.parse.
  *
  * The generic parameter narrows the return type — callers should validate the
  * shape at the boundary if untrusted input flows into the prompt.
+ *
+ * Se o Anthropic estiver indisponível (erro de conexão/timeout ou resposta
+ * inválida), cai para o fallback Gemini com o mesmo contrato de saída. O erro
+ * original NÃO é logado para não ecoar conteúdo do prompt.
  */
 export async function classifyHaiku<T = unknown>(args: ClassifyHaikuArgs): Promise<T> {
-  const client = createClient();
   const schemaDescription = JSON.stringify(args.schema);
   const system =
     'You are a strict JSON classifier. Reply with raw JSON only — no prose, ' +
     'no markdown, no code fences. The JSON must conform to this schema: ' +
     schemaDescription;
 
-  const response = await client.messages.create({
-    model: args.model ?? HAIKU_MODEL,
-    max_tokens: args.maxTokens ?? 256,
-    system,
-    messages: [{ role: 'user', content: args.prompt }],
-  });
+  try {
+    const client = createClient();
+    const response = await client.messages.create({
+      model: args.model ?? HAIKU_MODEL,
+      max_tokens: args.maxTokens ?? 256,
+      system,
+      messages: [{ role: 'user', content: args.prompt }],
+    });
 
-  const content = (response as { content?: Array<{ type?: string; text?: string }> }).content ?? [];
-  const firstText = content.find((block) => block.type === 'text')?.text;
-  if (typeof firstText !== 'string') {
-    throw new Error('classifyHaiku: model response did not contain a text block');
+    const content = (response as { content?: Array<{ type?: string; text?: string }> }).content ?? [];
+    const firstText = content.find((block) => block.type === 'text')?.text;
+    if (typeof firstText !== 'string') {
+      throw new Error('classifyHaiku: model response did not contain a text block');
+    }
+    return JSON.parse(firstText) as T;
+  } catch {
+    // Anthropic indisponível ou resposta inválida → fallback Gemini.
+    // Não logamos o erro original (pode ecoar conteúdo do prompt).
+    return classifyGeminiFallback<T>(system, args.prompt);
   }
-  return JSON.parse(firstText) as T;
 }
