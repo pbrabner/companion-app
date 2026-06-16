@@ -15,9 +15,13 @@
  */
 
 import { chatStream } from '@/shared/ai/client';
-import { REFLECTION_EMPATHIC_SYSTEM_PROMPT } from '@/shared/ai/prompts/reflection-empathic';
+import {
+  buildReflectionSystemPrompt,
+  REFLECTION_EMPATHIC_SYSTEM_PROMPT,
+} from '@/shared/ai/prompts/reflection-empathic';
 import { createServerClient } from '@/shared/db/server';
 import { createServiceClient } from '@/shared/db/service';
+import { sanitizeFindings } from '@/shared/memory/types';
 
 const MIN_CONTENT_LEN = 3;
 const MAX_CONTENT_LEN = 8000;
@@ -119,6 +123,22 @@ export async function POST(request: Request): Promise<Response> {
   }
   const reflectionId: string = insertData.id;
 
+  // Read-feedback: micro-memória no system prompt (best-effort — falha degrada
+  // pro prompt base). Leitura com a session do usuário (RLS owner).
+  let systemPrompt = REFLECTION_EMPATHIC_SYSTEM_PROMPT;
+  try {
+    const { data: mem } = await supabase
+      .from('user_memory')
+      .select('findings')
+      .eq('user_id', userId)
+      .maybeSingle();
+    systemPrompt = buildReflectionSystemPrompt(
+      sanitizeFindings((mem as { findings?: unknown } | null)?.findings),
+    );
+  } catch {
+    // sem memória / erro → prompt base (já default)
+  }
+
   // 6. Stream empathic response from Sonnet
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -131,7 +151,7 @@ export async function POST(request: Request): Promise<Response> {
       let aiSucceeded = false;
       try {
         for await (const chunk of chatStream({
-          system: REFLECTION_EMPATHIC_SYSTEM_PROMPT,
+          system: systemPrompt,
           messages: [{ role: 'user', content: trimmed }],
         })) {
           accumulated += chunk;

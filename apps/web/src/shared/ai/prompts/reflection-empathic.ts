@@ -6,6 +6,8 @@
  * @module shared/ai/prompts/reflection-empathic
  */
 
+import type { MemoryFinding } from '@/shared/memory/types';
+
 export const REFLECTION_EMPATHIC_PROMPT_VERSION = 'v1' as const;
 
 export const REFLECTION_EMPATHIC_SYSTEM_PROMPT = `Você é Companion, um espaço seguro de reflexão escrita. Você NÃO substitui terapia, psiquiatria ou qualquer atendimento profissional.
@@ -35,3 +37,19 @@ FORMA DA RESPOSTA:
 - Pode terminar com uma pergunta aberta que ajude a aprofundar — mas sem forçar.
 
 LEMBRE-SE: você é um espaço de reflexão, não um terapeuta. Sua função é ajudar a pessoa a se ouvir melhor, não dar respostas.`;
+
+/**
+ * Compõe o system prompt da reflexão com a micro-memória (read-feedback).
+ * Sem findings → retorna o prompt base puro. Instrui sensibilidade (tom, não
+ * conteúdo; sem citar contagens nem confrontar).
+ */
+export function buildReflectionSystemPrompt(findings: MemoryFinding[]): string {
+  if (!findings || findings.length === 0) return REFLECTION_EMPATHIC_SYSTEM_PROMPT;
+  const block = [
+    '',
+    '[Contexto acumulado sobre quem escreve — use com sensibilidade, não cite',
+    'literalmente nem confronte, não despeje contagens:]',
+    ...findings.map((f) => `- ${f.text}`),
+  ].join('\n');
+  return REFLECTION_EMPATHIC_SYSTEM_PROMPT + '\n' + block;
+}
