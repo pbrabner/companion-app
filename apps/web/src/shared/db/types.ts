@@ -343,6 +343,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_memory: {
+        Row: {
+          findings: Json
+          last_synthesized_at: string | null
+          source_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          findings?: Json
+          last_synthesized_at?: string | null
+          source_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          findings?: Json
+          last_synthesized_at?: string | null
+          source_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

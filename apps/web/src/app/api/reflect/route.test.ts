@@ -26,6 +26,7 @@ type InsertSingleResult = {
 
 let getUserResult: GetUserResult = { data: { user: null }, error: null };
 let insertSingleResult: InsertSingleResult = { data: null, error: null };
+let userMemoryRow: { data: unknown; error: unknown } = { data: null, error: null };
 
 const insertMock = vi.fn();
 const fromMock = vi.fn();
@@ -43,9 +44,24 @@ vi.mock('@/shared/ai/client', () => ({
   chatStream: chatStreamMock,
 }));
 
+const maybeSynthesizeMock = vi.fn();
+vi.mock('@/shared/memory/synthesize', () => ({
+  maybeSynthesizeMemory: (...a: unknown[]) => maybeSynthesizeMock(...a),
+}));
+
 vi.mock('@/shared/ai/prompts/reflection-empathic', () => ({
   REFLECTION_EMPATHIC_SYSTEM_PROMPT: 'TEST_PROMPT',
   REFLECTION_EMPATHIC_PROMPT_VERSION: 'v1',
+  buildReflectionSystemPrompt: (findings: Array<{ text: string }>) => {
+    if (!findings || findings.length === 0) return 'TEST_PROMPT';
+    const block = [
+      '',
+      '[Contexto acumulado sobre quem escreve — use com sensibilidade, não cite',
+      'literalmente nem confronte, não despeje contagens:]',
+      ...findings.map((f) => `- ${f.text}`),
+    ].join('\n');
+    return 'TEST_PROMPT' + '\n' + block;
+  },
 }));
 
 // --- Mocks reflections-history (service client, caminho de escrita) ---
@@ -101,17 +117,28 @@ beforeEach(() => {
   vi.clearAllMocks();
   getUserResult = { data: { user: null }, error: null };
   insertSingleResult = { data: null, error: null };
+  userMemoryRow = { data: null, error: null };
+
+  maybeSynthesizeMock.mockReset();
+  maybeSynthesizeMock.mockResolvedValue(undefined);
 
   getUserMock.mockImplementation(async () => getUserResult);
 
-  // from('journal_entries').insert(...).select('id').single() chain
-  fromMock.mockImplementation(() => ({
-    insert: insertMock.mockImplementation(() => ({
-      select: vi.fn(() => ({
-        single: vi.fn(async () => insertSingleResult),
+  // Table-aware: user_memory → select/eq/maybeSingle (read-feedback);
+  // journal_entries → insert/select/single chain (comportamento original).
+  fromMock.mockImplementation((table: string) => {
+    if (table === 'user_memory') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => userMemoryRow }) }) };
+    }
+    // journal_entries (comportamento original)
+    return {
+      insert: insertMock.mockImplementation(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(async () => insertSingleResult),
+        })),
       })),
-    })),
-  }));
+    };
+  });
 
   // Default chatStream: yields nothing (will be overridden per test)
   chatStreamMock.mockImplementation(() => makeAsyncIter([]));
@@ -399,6 +426,29 @@ describe('POST /api/reflect — Sonnet invocation shape', () => {
     expect(args.messages).toHaveLength(1);
     expect(args.messages[0]).toEqual({ role: 'user', content });
   });
+
+  it('CA-MM-8: /reflect com findings → chatStream recebe system com bloco de memória', async () => {
+    getUserResult = { data: { user: { id: 'u-mm' } }, error: null };
+    insertSingleResult = { data: { id: 'refl-1' }, error: null };
+    userMemoryRow = { data: { findings: [{ text: 'padrão X', confidence: 0.5, first_seen: 'a', last_seen: 'b', evidence_count: 4 }] }, error: null };
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['ok']));
+    const { POST } = await import('@/app/api/reflect/route');
+    await readStream(await POST(makeJsonRequest({ content: 'minha reflexão' })));
+    const systemArg = (chatStreamMock.mock.calls[0]![0] as { system: string }).system;
+    expect(systemArg).toContain('padrão X');
+    expect(systemArg).toContain('Contexto acumulado');
+  });
+
+  it('CA-MM-8b: sem findings → chatStream recebe prompt base puro (sem bloco)', async () => {
+    getUserResult = { data: { user: { id: 'u-mm' } }, error: null };
+    insertSingleResult = { data: { id: 'refl-1' }, error: null };
+    userMemoryRow = { data: null, error: null };
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['ok']));
+    const { POST } = await import('@/app/api/reflect/route');
+    await readStream(await POST(makeJsonRequest({ content: 'minha reflexão' })));
+    const systemArg = (chatStreamMock.mock.calls[0]![0] as { system: string }).system;
+    expect(systemArg).not.toContain('Contexto acumulado');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -492,6 +542,17 @@ describe('POST /api/reflect — ai_response save (reflections-history)', () => {
       expect(all).not.toContain(sentinelBody);
       expect(all).not.toContain(sentinelAi);
     }
+  });
+
+  it('CA-MM-9: síntese falha não afeta o stream nem o ai_response', async () => {
+    getUserResult = { data: { user: { id: 'u-mm' } }, error: null };
+    insertSingleResult = { data: { id: 'refl-1' }, error: null };
+    maybeSynthesizeMock.mockRejectedValueOnce(new Error('synth boom'));
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['resposta ok']));
+    const { POST } = await import('@/app/api/reflect/route');
+    const text = await readStream(await POST(makeJsonRequest({ content: 'minha reflexão' })));
+    expect(text).toContain('resposta ok');         // stream intacto
+    expect(maybeSynthesizeMock).toHaveBeenCalled(); // síntese foi disparada
   });
 
   it('CA-RH-2b: save que trava → resolve em SAVE_TIMEOUT_MS e loga save_timeout (stream fecha)', async () => {

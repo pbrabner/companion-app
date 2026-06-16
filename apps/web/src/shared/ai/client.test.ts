@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Shared mock state captured by the factory so each test can override behavior.
 const streamMock = vi.fn();
 const createMock = vi.fn();
+const geminiGenerateMock = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
   const Anthropic = vi.fn().mockImplementation(() => ({
@@ -21,11 +22,17 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: Anthropic };
 });
 
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn(() => ({ models: { generateContent: geminiGenerateMock } })),
+}));
+
 beforeEach(() => {
   vi.resetModules();
   streamMock.mockReset();
   createMock.mockReset();
+  geminiGenerateMock.mockReset();
   process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
 });
 
 describe('chatStream (Sonnet 4.6, streaming)', () => {
@@ -75,5 +82,31 @@ describe('classifyHaiku (Haiku 4.5, JSON via system prompt)', () => {
     });
 
     expect(result).toEqual({ risk: 'none' });
+  });
+});
+
+describe('classifyHaiku — fallback Gemini (CA-MM-7)', () => {
+  it('Haiku ok → usa Haiku, não chama Gemini', async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: '{"ok":true}' }] });
+    const { classifyHaiku } = await import('./client');
+    const out = await classifyHaiku<{ ok: boolean }>({ prompt: 'x', schema: { ok: 'boolean' } });
+    expect(out).toEqual({ ok: true });
+    expect(geminiGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it('Haiku indisponível → cai pro Gemini', async () => {
+    createMock.mockRejectedValueOnce(new Error('APIConnectionError'));
+    geminiGenerateMock.mockResolvedValueOnce({ text: '{"ok":true,"via":"gemini"}' });
+    const { classifyHaiku } = await import('./client');
+    const out = await classifyHaiku<{ ok: boolean; via?: string }>({ prompt: 'x', schema: { ok: 'boolean' } });
+    expect(out.ok).toBe(true);
+    expect(geminiGenerateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('Haiku e Gemini falham → throw', async () => {
+    createMock.mockRejectedValueOnce(new Error('anthropic down'));
+    geminiGenerateMock.mockRejectedValueOnce(new Error('gemini down'));
+    const { classifyHaiku } = await import('./client');
+    await expect(classifyHaiku({ prompt: 'x', schema: { ok: 'boolean' } })).rejects.toThrow();
   });
 });
