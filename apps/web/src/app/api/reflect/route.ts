@@ -21,6 +21,7 @@ import {
 } from '@/shared/ai/prompts/reflection-empathic';
 import { createServerClient } from '@/shared/db/server';
 import { createServiceClient } from '@/shared/db/service';
+import { maybeSynthesizeMemory } from '@/shared/memory/synthesize';
 import { sanitizeFindings } from '@/shared/memory/types';
 
 const MIN_CONTENT_LEN = 3;
@@ -62,6 +63,27 @@ async function saveAiResponse(reflectionId: string, text: string): Promise<void>
   } catch (err) {
     console.error('[reflect] ai_response_save_failed', {
       reflection_id: reflectionId,
+      error_code: err instanceof Error ? err.constructor.name : 'unknown',
+    });
+  }
+}
+
+const SYNTH_TIMEOUT_MS = 5000;
+
+/** Dispara a síntese da micro-memória best-effort com timeout — NUNCA relança. */
+async function triggerSynthesis(
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+): Promise<void> {
+  try {
+    const synth = Promise.resolve(maybeSynthesizeMemory(userId, supabase));
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), SYNTH_TIMEOUT_MS).unref?.();
+    });
+    await Promise.race([synth, timeout]);
+  } catch (err) {
+    console.error('[reflect] synthesis_trigger_failed', {
+      user_id: userId,
       error_code: err instanceof Error ? err.constructor.name : 'unknown',
     });
   }
@@ -181,6 +203,7 @@ export async function POST(request: Request): Promise<Response> {
         if (aiSucceeded) {
           await saveAiResponse(reflectionId, accumulated);
         }
+        await triggerSynthesis(userId, supabase);
         controller.close();
       }
     },

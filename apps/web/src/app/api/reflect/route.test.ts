@@ -44,6 +44,11 @@ vi.mock('@/shared/ai/client', () => ({
   chatStream: chatStreamMock,
 }));
 
+const maybeSynthesizeMock = vi.fn();
+vi.mock('@/shared/memory/synthesize', () => ({
+  maybeSynthesizeMemory: (...a: unknown[]) => maybeSynthesizeMock(...a),
+}));
+
 vi.mock('@/shared/ai/prompts/reflection-empathic', () => ({
   REFLECTION_EMPATHIC_SYSTEM_PROMPT: 'TEST_PROMPT',
   REFLECTION_EMPATHIC_PROMPT_VERSION: 'v1',
@@ -113,6 +118,9 @@ beforeEach(() => {
   getUserResult = { data: { user: null }, error: null };
   insertSingleResult = { data: null, error: null };
   userMemoryRow = { data: null, error: null };
+
+  maybeSynthesizeMock.mockReset();
+  maybeSynthesizeMock.mockResolvedValue(undefined);
 
   getUserMock.mockImplementation(async () => getUserResult);
 
@@ -534,6 +542,17 @@ describe('POST /api/reflect — ai_response save (reflections-history)', () => {
       expect(all).not.toContain(sentinelBody);
       expect(all).not.toContain(sentinelAi);
     }
+  });
+
+  it('CA-MM-9: síntese falha não afeta o stream nem o ai_response', async () => {
+    getUserResult = { data: { user: { id: 'u-mm' } }, error: null };
+    insertSingleResult = { data: { id: 'refl-1' }, error: null };
+    maybeSynthesizeMock.mockRejectedValueOnce(new Error('synth boom'));
+    chatStreamMock.mockImplementation(() => makeAsyncIter(['resposta ok']));
+    const { POST } = await import('@/app/api/reflect/route');
+    const text = await readStream(await POST(makeJsonRequest({ content: 'minha reflexão' })));
+    expect(text).toContain('resposta ok');         // stream intacto
+    expect(maybeSynthesizeMock).toHaveBeenCalled(); // síntese foi disparada
   });
 
   it('CA-RH-2b: save que trava → resolve em SAVE_TIMEOUT_MS e loga save_timeout (stream fecha)', async () => {
