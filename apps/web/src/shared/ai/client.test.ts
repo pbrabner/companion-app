@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const streamMock = vi.fn();
 const createMock = vi.fn();
 const geminiGenerateMock = vi.fn();
+const geminiStreamMock = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
   const Anthropic = vi.fn().mockImplementation(() => ({
@@ -23,7 +24,12 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn(() => ({ models: { generateContent: geminiGenerateMock } })),
+  GoogleGenAI: vi.fn(() => ({
+    models: {
+      generateContent: geminiGenerateMock,
+      generateContentStream: geminiStreamMock,
+    },
+  })),
 }));
 
 beforeEach(() => {
@@ -31,6 +37,7 @@ beforeEach(() => {
   streamMock.mockReset();
   createMock.mockReset();
   geminiGenerateMock.mockReset();
+  geminiStreamMock.mockReset();
   process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
   process.env.GEMINI_API_KEY = 'test-gemini-key';
 });
@@ -108,5 +115,57 @@ describe('classifyHaiku — fallback Gemini (CA-MM-7)', () => {
     geminiGenerateMock.mockRejectedValueOnce(new Error('gemini down'));
     const { classifyHaiku } = await import('./client');
     await expect(classifyHaiku({ prompt: 'x', schema: { ok: 'boolean' } })).rejects.toThrow();
+  });
+});
+
+describe('chatStream — fallback Gemini streaming (CA-CSF-1)', () => {
+  it('quando Anthropic falha na abertura, streama os chunks .text do Gemini', async () => {
+    streamMock.mockRejectedValueOnce(new Error('APIConnectionError'));
+    geminiStreamMock.mockResolvedValueOnce(
+      (async function* () {
+        yield { text: 'g1' };
+        yield { text: 'g2' };
+      })(),
+    );
+
+    const { chatStream } = await import('./client');
+
+    const collected: string[] = [];
+    for await (const chunk of chatStream({
+      system: 'sys',
+      messages: [{ role: 'user', content: 'oi' }],
+    })) {
+      collected.push(chunk);
+    }
+
+    expect(collected).toEqual(['g1', 'g2']);
+  });
+
+  it('mapeia role assistant→model e user→user no contents do Gemini', async () => {
+    streamMock.mockRejectedValueOnce(new Error('down'));
+    geminiStreamMock.mockResolvedValueOnce(
+      (async function* () {
+        yield { text: 'x' };
+      })(),
+    );
+
+    const { chatStream } = await import('./client');
+    for await (const _ of chatStream({
+      system: 'sys',
+      messages: [
+        { role: 'user', content: 'pergunta' },
+        { role: 'assistant', content: 'resposta' },
+      ],
+    })) {
+      void _;
+    }
+
+    expect(geminiStreamMock).toHaveBeenCalledTimes(1);
+    const callArg = geminiStreamMock.mock.calls[0]![0];
+    expect(callArg.config).toEqual({ systemInstruction: 'sys' });
+    expect(callArg.contents).toEqual([
+      { role: 'user', parts: [{ text: 'pergunta' }] },
+      { role: 'model', parts: [{ text: 'resposta' }] },
+    ]);
   });
 });

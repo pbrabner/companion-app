@@ -68,27 +68,70 @@ function createClient(): Anthropic {
  * Stream a chat completion with Sonnet 4.6 and yield text chunks as they
  * arrive. Consumes the SDK stream and re-emits only the `text_delta` payloads
  * from `content_block_delta` events as plain strings.
+ *
+ * Se o Anthropic falhar ANTES do primeiro token (abertura), cai automaticamente
+ * para o Gemini via chatStreamGeminiFallback. Se falhar após já ter emitido
+ * algum token (mid-stream), re-lança — o parcial já foi entregue. O erro
+ * original NÃO é logado (pode ecoar conteúdo do prompt).
  */
 export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
-  const client = createClient();
-  const stream = await client.messages.stream({
-    model: args.model ?? SONNET_MODEL,
-    max_tokens: args.maxTokens ?? 4096,
-    system: args.system,
-    messages: args.messages,
-  });
+  let yielded = false;
+  try {
+    const client = createClient();
+    const stream = await client.messages.stream({
+      model: args.model ?? SONNET_MODEL,
+      max_tokens: args.maxTokens ?? 4096,
+      system: args.system,
+      messages: args.messages,
+    });
 
-  for await (const event of stream as AsyncIterable<unknown>) {
-    const evt = event as {
-      type?: string;
-      delta?: { type?: string; text?: string };
-    };
-    if (
-      evt.type === 'content_block_delta' &&
-      evt.delta?.type === 'text_delta' &&
-      typeof evt.delta.text === 'string'
-    ) {
-      yield evt.delta.text;
+    for await (const event of stream as AsyncIterable<unknown>) {
+      const evt = event as {
+        type?: string;
+        delta?: { type?: string; text?: string };
+      };
+      if (
+        evt.type === 'content_block_delta' &&
+        evt.delta?.type === 'text_delta' &&
+        typeof evt.delta.text === 'string'
+      ) {
+        yielded = true;
+        yield evt.delta.text;
+      }
+    }
+  } catch (err) {
+    // Anthropic indisponível. Se já emitimos algum token (falha mid-stream),
+    // re-lançamos — o texto parcial já foi entregue e a rota trata como
+    // ai_unavailable. Se falhou antes do 1º token (abertura), caímos pro Gemini.
+    // NÃO logamos o erro original (pode ecoar conteúdo do prompt).
+    if (yielded) throw err;
+    yield* chatStreamGeminiFallback(args);
+  }
+}
+
+/**
+ * Fallback de chat streaming via Gemini quando o Anthropic está indisponível.
+ * Mapeia ChatMessage[] para o formato `contents` do Gemini (role assistant→model)
+ * e re-emite os chunks de texto. NÃO loga conteúdo.
+ */
+async function* chatStreamGeminiFallback(
+  args: ChatStreamArgs,
+): AsyncIterable<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const genai = new GoogleGenAI({ apiKey });
+  const contents = args.messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  const stream = await genai.models.generateContentStream({
+    model: GEMINI_FALLBACK_MODEL,
+    contents,
+    config: { systemInstruction: args.system },
+  });
+  for await (const chunk of stream as AsyncIterable<{ text?: string }>) {
+    const t = chunk.text;
+    if (typeof t === 'string' && t.length > 0) {
+      yield t;
     }
   }
 }
