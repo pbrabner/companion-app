@@ -177,3 +177,71 @@ describe('chatStream — fallback Gemini streaming (CA-CSF-1)', () => {
     ]);
   });
 });
+
+describe('chatStream — fronteira yielded (CA-CSF-2,3,4)', () => {
+  it('Anthropic OK → streama Sonnet e NÃO chama o Gemini', async () => {
+    streamMock.mockImplementation(async function* () {
+      yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'a' } };
+      yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'b' } };
+    });
+
+    const { chatStream } = await import('./client');
+
+    const collected: string[] = [];
+    for await (const chunk of chatStream({
+      system: 'sys',
+      messages: [{ role: 'user', content: 'oi' }],
+    })) {
+      collected.push(chunk);
+    }
+
+    expect(collected).toEqual(['a', 'b']);
+    expect(geminiStreamMock).not.toHaveBeenCalled();
+  });
+
+  it('Anthropic emite N tokens depois falha (mid-stream) → re-lança, Gemini NÃO chamado', async () => {
+    streamMock.mockImplementation(async function* () {
+      yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'a' } };
+      throw new Error('mid-stream boom');
+    });
+
+    const { chatStream } = await import('./client');
+
+    const collected: string[] = [];
+    await expect(
+      (async () => {
+        for await (const chunk of chatStream({
+          system: 'sys',
+          messages: [{ role: 'user', content: 'oi' }],
+        })) {
+          collected.push(chunk);
+        }
+      })(),
+    ).rejects.toThrow('mid-stream boom');
+
+    expect(collected).toEqual(['a']);
+    expect(geminiStreamMock).not.toHaveBeenCalled();
+  });
+
+  it('Anthropic falha na abertura E Gemini falha → erro propaga', async () => {
+    streamMock.mockReturnValueOnce(
+      (async function* () {
+        throw new Error('anthropic down');
+      })(),
+    );
+    geminiStreamMock.mockRejectedValueOnce(new Error('gemini down'));
+
+    const { chatStream } = await import('./client');
+
+    await expect(
+      (async () => {
+        for await (const _ of chatStream({
+          system: 'sys',
+          messages: [{ role: 'user', content: 'oi' }],
+        })) {
+          void _;
+        }
+      })(),
+    ).rejects.toThrow('gemini down');
+  });
+});
