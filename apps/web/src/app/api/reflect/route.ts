@@ -14,15 +14,14 @@
  * @module app/api/reflect/route
  */
 
-import { chatStream } from '@/shared/ai/client';
 import {
   buildReflectionSystemPrompt,
   REFLECTION_EMPATHIC_SYSTEM_PROMPT,
 } from '@/shared/ai/prompts/reflection-empathic';
 import { createServerClient } from '@/shared/db/server';
-import { createServiceClient } from '@/shared/db/service';
 import { maybeSynthesizeMemory } from '@/shared/memory/synthesize';
 import { sanitizeFindings } from '@/shared/memory/types';
+import { buildReflectionResponseStream } from './response-stream';
 
 const MIN_CONTENT_LEN = 3;
 const MAX_CONTENT_LEN = 8000;
@@ -32,40 +31,6 @@ function jsonResponse(status: number, body: object): Response {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
-}
-
-const SAVE_TIMEOUT_MS = 5000;
-
-/**
- * Persiste a resposta completa da IA best-effort (D-RH-2). NUNCA lança e
- * resolve em no máximo SAVE_TIMEOUT_MS — falha ou stall aqui não podem
- * segurar o close() do stream já entregue ao usuário.
- * Privacy gate: loga só reflection_id + error_code, nunca o texto.
- */
-async function saveAiResponse(reflectionId: string, text: string): Promise<void> {
-  try {
-    const service = createServiceClient();
-    const save = service
-      .from('journal_entries')
-      .update({ ai_response: text, ai_response_at: new Date().toISOString() })
-      .eq('id', reflectionId)
-      .then(({ error }) => (error ? (error.code ?? 'unknown') : null));
-    const timeout = new Promise<string>((resolve) => {
-      setTimeout(() => resolve('save_timeout'), SAVE_TIMEOUT_MS).unref?.();
-    });
-    const errorCode = await Promise.race([save, timeout]);
-    if (errorCode !== null) {
-      console.error('[reflect] ai_response_save_failed', {
-        reflection_id: reflectionId,
-        error_code: errorCode,
-      });
-    }
-  } catch (err) {
-    console.error('[reflect] ai_response_save_failed', {
-      reflection_id: reflectionId,
-      error_code: err instanceof Error ? err.constructor.name : 'unknown',
-    });
-  }
 }
 
 const SYNTH_TIMEOUT_MS = 5000;
@@ -162,51 +127,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // 6. Stream empathic response from Sonnet
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      // First line: JSON metadata so the client captures reflection_id immediately.
-      controller.enqueue(
-        encoder.encode(JSON.stringify({ reflection_id: reflectionId }) + '\n'),
-      );
-      let accumulated = '';
-      let aiSucceeded = false;
-      try {
-        for await (const chunk of chatStream({
-          system: systemPrompt,
-          messages: [{ role: 'user', content: trimmed }],
-        })) {
-          accumulated += chunk;
-          controller.enqueue(encoder.encode(chunk));
-        }
-        aiSucceeded = true;
-      } catch (err) {
-        // Privacy gate: log error CLASS name only (e.g. "APIError",
-        // "APIConnectionError"). Never err.message — Anthropic SDK errors
-        // can echo request payload fragments back in the message body
-        // (e.g. validation errors quote the rejected content), which would
-        // leak user reflection content into observability.
-        const errCode =
-          err instanceof Error ? err.constructor.name : 'unknown';
-        console.error('[reflect] ai_unavailable', {
-          user_id: userId,
-          reflection_id: reflectionId,
-          content_length: trimmed.length,
-          error_code: errCode,
-        });
-        controller.enqueue(
-          encoder.encode(
-            '\n' + JSON.stringify({ error: 'ai_unavailable', reflection_id: reflectionId }) + '\n',
-          ),
-        );
-      } finally {
-        if (aiSucceeded) {
-          await saveAiResponse(reflectionId, accumulated);
-        }
-        await triggerSynthesis(userId, supabase);
-        controller.close();
-      }
-    },
+  const stream = buildReflectionResponseStream({
+    reflectionId,
+    body: trimmed,
+    userId,
+    systemPrompt,
+    onComplete: () => triggerSynthesis(userId, supabase),
   });
 
   return new Response(stream, {
