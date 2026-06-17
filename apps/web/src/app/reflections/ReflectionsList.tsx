@@ -209,8 +209,9 @@ export function ReflectionsList() {
                 variant="outline"
                 onClick={() => handleRetry(item.id)}
                 disabled={!!retrying[item.id]}
+                aria-busy={!!retrying[item.id]}
               >
-                Tentar de novo
+                {retrying[item.id] ? 'Tentando...' : 'Tentar de novo'}
               </Button>
             </div>
           )}

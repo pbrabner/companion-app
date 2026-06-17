@@ -42,7 +42,9 @@ export async function POST(
   if (!row) {
     return jsonResponse(404, { error: 'not_found' });
   }
-  if ((row as { ai_response: string | null }).ai_response !== null) {
+  // Truthy check (não `!== null`): uma resposta vazia ('') também conta como
+  // "sem resposta real" e deve poder ser re-gerada.
+  if ((row as { ai_response: string | null }).ai_response) {
     return jsonResponse(409, { error: 'already_answered' });
   }
   const body = (row as { body: string }).body;
