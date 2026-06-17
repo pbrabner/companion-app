@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../design-system/components/Button';
 import { toast } from '../../design-system/components/use-toast';
 import { MarkdownResponse } from '../reflect/MarkdownResponse';
+import { streamRetry } from '../reflect/stream-retry';
 
 const PAGE_SIZE = 20;
 
@@ -65,6 +66,8 @@ function formatDate(iso: string): string {
 export function ReflectionsList() {
   const [state, setState] = useState<ListState>({ kind: 'loading' });
   const cancelledRef = useRef(false);
+  const [retryText, setRetryText] = useState<Record<string, string>>({});
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -108,6 +111,38 @@ export function ReflectionsList() {
       items: [...items, ...result.reflections],
       nextCursor: result.next_cursor,
     });
+  }
+
+  async function handleRetry(id: string) {
+    setRetrying((m) => ({ ...m, [id]: true }));
+    setRetryText((m) => ({ ...m, [id]: '' }));
+    const result = await streamRetry(id);
+    if (!result.ok) {
+      setRetrying((m) => ({ ...m, [id]: false }));
+      toast({
+        variant: 'destructive',
+        title: 'Não deu pra tentar de novo',
+        description: result.code === 'auth' ? 'Sessão expirada.' : 'Tenta de novo daqui a pouco.',
+      });
+      return;
+    }
+    let acc = '';
+    for await (const event of result.events) {
+      if (event.type === 'text') {
+        acc += event.chunk;
+        setRetryText((m) => ({ ...m, [id]: acc }));
+      } else if (event.type === 'error') {
+        setRetrying((m) => ({ ...m, [id]: false }));
+        toast({ variant: 'destructive', title: 'IA indisponível', description: 'Tenta de novo daqui a pouco.' });
+        return;
+      }
+    }
+    setState((s) =>
+      s.kind === 'ready' || s.kind === 'loadingMore'
+        ? { ...s, items: s.items.map((it) => (it.id === id ? { ...it, ai_response: acc } : it)) }
+        : s,
+    );
+    setRetrying((m) => ({ ...m, [id]: false }));
   }
 
   if (state.kind === 'loading') {
@@ -155,8 +190,30 @@ export function ReflectionsList() {
             <div className="border-l-2 border-muted pl-4 text-sm text-muted-foreground">
               <MarkdownResponse>{item.ai_response}</MarkdownResponse>
             </div>
+          ) : retryText[item.id] !== undefined ? (
+            <div className="border-l-2 border-muted pl-4 text-sm text-muted-foreground">
+              {retrying[item.id] ? (
+                <p className="whitespace-pre-wrap">
+                  {retryText[item.id]}
+                  <span className="animate-pulse">▊</span>
+                </p>
+              ) : (
+                <MarkdownResponse>{retryText[item.id]!}</MarkdownResponse>
+              )}
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground italic">Sem resposta registrada</p>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground italic">Sem resposta registrada</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleRetry(item.id)}
+                disabled={!!retrying[item.id]}
+                aria-busy={!!retrying[item.id]}
+              >
+                {retrying[item.id] ? 'Tentando...' : 'Tentar de novo'}
+              </Button>
+            </div>
           )}
         </article>
       ))}

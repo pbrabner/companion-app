@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '../../design-system/components/Button';
 import { toast } from '../../design-system/components/use-toast';
 import { parseReflectStream } from './parse-stream';
+import { streamRetry } from './stream-retry';
 import { MarkdownResponse } from './MarkdownResponse';
 
 const MIN_LEN = 3;
@@ -97,6 +98,48 @@ export function ReflectForm() {
     setState({ kind: 'idle' });
   }
 
+  async function consumeEvents(events: AsyncGenerator<import('./parse-stream').ReflectStreamEvent>) {
+    let accText = '';
+    let reflectionId: string | null = null;
+    setState({ kind: 'streaming', text: '', reflectionId: null });
+    for await (const event of events) {
+      if (event.type === 'metadata') {
+        reflectionId = event.reflection_id;
+        setState({ kind: 'streaming', text: accText, reflectionId });
+      } else if (event.type === 'text') {
+        accText += event.chunk;
+        setState({ kind: 'streaming', text: accText, reflectionId });
+      } else if (event.type === 'error') {
+        setState({
+          kind: 'error',
+          code: event.code === 'ai_unavailable' ? 'ai_unavailable' : 'network',
+          partial: accText,
+          reflectionId: event.reflection_id ?? reflectionId ?? undefined,
+        });
+        toast({
+          variant: 'destructive',
+          title: 'IA indisponível',
+          description: 'Tua reflexão foi salva. Tenta de novo daqui a pouco.',
+        });
+        return;
+      }
+    }
+    setState({ kind: 'done', text: accText, reflectionId });
+  }
+
+  async function handleRetry(reflectionId: string) {
+    const result = await streamRetry(reflectionId);
+    if (!result.ok) {
+      toast({
+        variant: 'destructive',
+        title: 'Não deu pra tentar de novo',
+        description: result.code === 'auth' ? 'Sessão expirada.' : 'Tenta de novo daqui a pouco.',
+      });
+      return;
+    }
+    await consumeEvents(result.events);
+  }
+
   if (state.kind === 'error' && state.code === 'auth') {
     return (
       <div className="max-w-2xl mx-auto p-6 border rounded-lg bg-card text-card-foreground">
@@ -169,6 +212,16 @@ export function ReflectForm() {
           <p className="text-sm text-muted-foreground mt-2">
             Sua reflexão foi salva (ID: <code>{state.reflectionId}</code>) mas a resposta da IA falhou.
           </p>
+          {state.reflectionId && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3"
+              onClick={() => handleRetry(state.reflectionId!)}
+            >
+              Tentar de novo
+            </Button>
+          )}
         </div>
       )}
     </form>
