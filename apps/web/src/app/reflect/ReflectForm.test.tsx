@@ -3,6 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ReflectForm } from './ReflectForm';
+import { streamRetry } from './stream-retry';
+
+vi.mock('./stream-retry', () => ({ streamRetry: vi.fn() }));
 
 const toastMock = vi.fn();
 vi.mock('../../design-system/components/use-toast', () => ({
@@ -150,5 +153,34 @@ describe('ReflectForm', () => {
     expect(screen.getByRole('button')).toBeDisabled();
     // Resolve to clean up
     resolveStream(streamResponse(['{"reflection_id":"x"}\n', 'done']));
+  });
+
+  it('CA-RT-4: botão "Tentar de novo" no ai_unavailable re-streama e vira done', async () => {
+    const enc = new TextEncoder();
+    const failBody = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode('{"reflection_id":"r1"}\n'));
+        c.enqueue(enc.encode('\n{"error":"ai_unavailable","reflection_id":"r1"}\n'));
+        c.close();
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(failBody, { status: 200 }));
+
+    async function* okEvents() {
+      yield { type: 'metadata', reflection_id: 'r1' } as const;
+      yield { type: 'text', chunk: 'Resposta agora' } as const;
+    }
+    (streamRetry as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, events: okEvents() });
+
+    const user = userEvent.setup();
+    render(<ReflectForm />);
+    await user.type(screen.getByPlaceholderText(/Escreva/), 'minha reflexão de teste');
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
+
+    const retryBtn = await screen.findByRole('button', { name: 'Tentar de novo' });
+    await user.click(retryBtn);
+
+    expect(await screen.findByText('Resposta agora')).toBeInTheDocument();
+    expect(streamRetry).toHaveBeenCalledWith('r1');
   });
 });
