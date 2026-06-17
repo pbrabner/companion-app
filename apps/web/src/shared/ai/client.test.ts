@@ -120,7 +120,11 @@ describe('classifyHaiku — fallback Gemini (CA-MM-7)', () => {
 
 describe('chatStream — fallback Gemini streaming (CA-CSF-1)', () => {
   it('quando Anthropic falha na abertura, streama os chunks .text do Gemini', async () => {
-    streamMock.mockRejectedValueOnce(new Error('APIConnectionError'));
+    streamMock.mockReturnValueOnce(
+      (async function* () {
+        throw new Error('APIConnectionError');
+      })(),
+    );
     geminiStreamMock.mockResolvedValueOnce(
       (async function* () {
         yield { text: 'g1' };
@@ -142,7 +146,11 @@ describe('chatStream — fallback Gemini streaming (CA-CSF-1)', () => {
   });
 
   it('mapeia role assistant→model e user→user no contents do Gemini', async () => {
-    streamMock.mockRejectedValueOnce(new Error('down'));
+    streamMock.mockReturnValueOnce(
+      (async function* () {
+        throw new Error('down');
+      })(),
+    );
     geminiStreamMock.mockResolvedValueOnce(
       (async function* () {
         yield { text: 'x' };

@@ -76,15 +76,16 @@ function createClient(): Anthropic {
  */
 export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
   let yielded = false;
+  const client = createClient();
+  // messages.stream() retorna um MessageStream de forma síncrona; erros de
+  // conexão (ex.: chave ausente) surgem na iteração, não na chamada.
+  const stream = client.messages.stream({
+    model: args.model ?? SONNET_MODEL,
+    max_tokens: args.maxTokens ?? 4096,
+    system: args.system,
+    messages: args.messages,
+  });
   try {
-    const client = createClient();
-    const stream = await client.messages.stream({
-      model: args.model ?? SONNET_MODEL,
-      max_tokens: args.maxTokens ?? 4096,
-      system: args.system,
-      messages: args.messages,
-    });
-
     for await (const event of stream as AsyncIterable<unknown>) {
       const evt = event as {
         type?: string;
@@ -100,11 +101,11 @@ export async function* chatStream(args: ChatStreamArgs): AsyncIterable<string> {
       }
     }
   } catch (err) {
-    // Anthropic indisponível. Se já emitimos algum token (falha mid-stream),
-    // re-lançamos — o texto parcial já foi entregue e a rota trata como
-    // ai_unavailable. Se falhou antes do 1º token (abertura), caímos pro Gemini.
+    // Anthropic indisponível. Mid-stream (já emitiu token) → re-lança; falha na
+    // abertura (0 tokens) → aborta o stream pendente e cai pro Gemini.
     // NÃO logamos o erro original (pode ecoar conteúdo do prompt).
     if (yielded) throw err;
+    (stream as { abort?: () => void }).abort?.();
     yield* chatStreamGeminiFallback(args);
   }
 }
@@ -128,7 +129,7 @@ async function* chatStreamGeminiFallback(
     contents,
     config: { systemInstruction: args.system },
   });
-  for await (const chunk of stream as AsyncIterable<{ text?: string }>) {
+  for await (const chunk of stream) {
     const t = chunk.text;
     if (typeof t === 'string' && t.length > 0) {
       yield t;
