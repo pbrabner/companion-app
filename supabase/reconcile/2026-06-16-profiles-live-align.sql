@@ -42,7 +42,9 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active_track        text;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'profiles_active_track_fkey'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'profiles_active_track_fkey'
+      AND conrelid = 'public.profiles'::regclass
   ) THEN
     ALTER TABLE public.profiles
       ADD CONSTRAINT profiles_active_track_fkey
