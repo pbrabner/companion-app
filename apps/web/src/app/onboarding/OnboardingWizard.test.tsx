@@ -36,7 +36,8 @@ describe('OnboardingWizard', () => {
       '/api/onboarding',
       expect.objectContaining({ method: 'POST' }),
     );
-    const body = JSON.parse((globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1].body);
+    const calls = (globalThis.fetch as unknown as { mock: { calls: Array<[string, { body: string }]> } }).mock.calls;
+    const body = JSON.parse(calls[0]![1].body);
     expect(body).toEqual({ accepted: true, track: 'disciplina', mood: 4, areas: ['trabalho'] });
     expect(pushMock).toHaveBeenCalledWith('/reflect');
   });
