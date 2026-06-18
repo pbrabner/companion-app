@@ -138,3 +138,32 @@ describe('middleware — public routes bypass auth gate', () => {
     },
   );
 });
+
+describe('middleware — onboarding gate cobre rotas de produto', () => {
+  it('autenticado não-onboardado em /reflect → 307 /onboarding', async () => {
+    const { middleware } = await import('@/middleware');
+    getUserResult = { data: { user: { id: 'u1' } }, error: null };
+    profileResult = { data: { onboarded_at: null }, error: null };
+    const response = await middleware(makeRequest('/reflect'));
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/onboarding');
+  });
+
+  it('autenticado não-onboardado em /onboarding → passthrough (sem loop)', async () => {
+    const { middleware } = await import('@/middleware');
+    getUserResult = { data: { user: { id: 'u1' } }, error: null };
+    profileResult = { data: { onboarded_at: null }, error: null };
+    const response = await middleware(makeRequest('/onboarding'));
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.status).toBeLessThan(300);
+  });
+
+  it('autenticado onboardado em /reflect → passthrough', async () => {
+    const { middleware } = await import('@/middleware');
+    getUserResult = { data: { user: { id: 'u1' } }, error: null };
+    profileResult = { data: { onboarded_at: '2026-01-01T00:00:00Z' }, error: null };
+    const response = await middleware(makeRequest('/reflect'));
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.status).toBeLessThan(300);
+  });
+});

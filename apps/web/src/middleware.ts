@@ -2,8 +2,9 @@
  * Next.js middleware that injects a server-side Supabase client per
  * request, gates protected routes by session presence, and forces
  * authenticated-but-not-onboarded users into /onboarding before they
- * can reach /app. Public routes (/, /login, /auth/callback) always
- * pass through. Implements T-007 acceptance criteria.
+ * can reach rotas de produto (/app, /reflect, /reflections). Public
+ * routes (/, /login, /auth/callback) always pass through. Implements
+ * T-007 acceptance criteria.
  * @module middleware
  */
 
@@ -66,9 +67,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(url, 307);
   }
 
-  // Authenticated users hitting /app must be onboarded; otherwise route
-  // them to /onboarding to finish the wizard.
-  if (pathname.startsWith('/app')) {
+  // Rotas de produto exigem onboarding completo. /onboarding nunca é gateado
+  // por onboarding (evita loop) mas exige sessão (já coberto acima).
+  const ONBOARDING_GATED_PREFIXES = ['/app', '/reflect', '/reflections'];
+  const needsOnboarding =
+    pathname !== '/onboarding' &&
+    ONBOARDING_GATED_PREFIXES.some((p) => pathname.startsWith(p));
+
+  if (needsOnboarding) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('onboarded_at')
