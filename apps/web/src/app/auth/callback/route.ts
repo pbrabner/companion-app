@@ -34,5 +34,6 @@ export async function GET(request: NextRequest): Promise<Response> {
     return NextResponse.redirect(`${origin}/login?error=exchange_failed`);
   }
 
-  return NextResponse.redirect(`${origin}/`);
+  // Pós-login vai pro produto; o middleware desvia pra /onboarding se necessário.
+  return NextResponse.redirect(`${origin}/reflect`);
 }
