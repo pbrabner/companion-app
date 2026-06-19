@@ -69,10 +69,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // Rotas de produto exigem onboarding completo. /onboarding nunca é gateado
   // por onboarding (evita loop) mas exige sessão (já coberto acima).
+  // Match exato ou subpath (evita falso-positivo tipo /application casar /app).
   const ONBOARDING_GATED_PREFIXES = ['/app', '/reflect', '/reflections'];
   const needsOnboarding =
     pathname !== '/onboarding' &&
-    ONBOARDING_GATED_PREFIXES.some((p) => pathname.startsWith(p));
+    ONBOARDING_GATED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
   if (needsOnboarding) {
     const { data: profile } = await supabase
@@ -92,5 +93,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health).*)'],
+  // Exclui /api/* — as rotas API se auto-autenticam e devem responder JSON
+  // (não redirect HTML). Sem isso, um POST com sessão expirada levaria 307.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/).*)'],
 };

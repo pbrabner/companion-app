@@ -29,6 +29,7 @@ function parseInput(raw: unknown, validTracks: Set<string>): OnboardingInput | n
   if (typeof o.mood !== 'number' || !Number.isInteger(o.mood) || o.mood < 1 || o.mood > 5) return null;
   if (!Array.isArray(o.areas) || o.areas.length === 0) return null;
   if (!o.areas.every((a) => typeof a === 'string' && LIFE_AREA_SLUGS.includes(a))) return null;
+  if (new Set(o.areas).size !== o.areas.length) return null; // sem duplicatas
   return { accepted: true, track: o.track, mood: o.mood, areas: o.areas as string[] };
 }
 
